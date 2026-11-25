@@ -428,6 +428,11 @@ window.__ModuleLoader__.load({
         let attempts = 0
         let lastSignature = ''
         let stableTicks = 0
+        // Adopting the store after subscribing matters: the first publish can land
+        // while another instance is subscribing, and `publish` is a no-op afterwards
+        // (unchanged value), which used to leave this instance stuck on the initial
+        // snapshot and therefore render nothing.
+        const adopt = () => setValue(chrome.value)
         const signatureOf = () => {
           const strip = document.querySelector('[class*="topStrip"]')
           const toggle = strip === null ? null : strip.querySelector('[data-sidebar-toggle]')
@@ -439,6 +444,7 @@ window.__ModuleLoader__.load({
           if (signature === lastSignature) stableTicks += 1
           else { lastSignature = signature; stableTicks = 0 }
           refreshChrome()
+          adopt()
           attempts += 1
           // Keep going until the shell has settled for a while, so a window that is
           // still being laid out cannot freeze a provisional answer.
@@ -448,6 +454,7 @@ window.__ModuleLoader__.load({
           }
         }
         refreshChrome()
+        adopt()
         timer = window.setInterval(settle, 120)
         const frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(settle) : 0
 
@@ -679,6 +686,7 @@ window.__ModuleLoader__.load({
 
         const probe = modeStore.probe
         const mode = modeStore.mode()
+
 
         /**
          * Switch mode and open the Session that belongs to it.
@@ -1233,29 +1241,32 @@ window.__ModuleLoader__.load({
         ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({
           name: 'conversation.header.leading',
         }, Inline))
-        // Frame-level layer: unclipped, so the switch can sit over the sidebar's
-        // own chrome strip beside the collapse control.
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay',
-          id: 'dsh-plugin-chat-switch',
-          order: 5,
-        }, Overlay))
-
         const CitationCard = createCitationCard(ctx)
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay',
-          id: 'dsh-plugin-chat-citation-card',
-          order: 7,
-        }, CitationCard))
-
         // Mode-scoped sidebar: chat mode shows only chat Sessions, code mode
         // hides the chat Workspace entirely.
         const SidebarFilter = createSidebarFilter(ctx)
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay',
-          id: 'dsh-plugin-chat-sidebar-filter',
-          order: 6,
-        }, SidebarFilter))
+
+        // Frame-level layer: unclipped, so the switch can sit over the sidebar's
+        // own chrome strip beside the collapse control. All three occupants share
+        // ONE injection: a second `ctx.slots.inject` on the same slot key replaces
+        // the first, which silently dropped the switch (and the card) before.
+        ctx.slots.inject('shell.overlay', function* () {
+          yield ctx.slots.register({
+            name: 'shell.overlay',
+            id: 'dsh-plugin-chat-switch',
+            order: 5,
+          }, Overlay)
+          yield ctx.slots.register({
+            name: 'shell.overlay',
+            id: 'dsh-plugin-chat-sidebar-filter',
+            order: 6,
+          }, SidebarFilter)
+          yield ctx.slots.register({
+            name: 'shell.overlay',
+            id: 'dsh-plugin-chat-citation-card',
+            order: 7,
+          }, CitationCard)
+        })
 
         const ModeProbe = createModeProbe(ctx)
         ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
