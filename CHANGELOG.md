@@ -10,6 +10,7 @@ First release.
 - A provisioned chat Workspace (`~/DSH-Chat`, name 对话) so a chat never asks for a directory.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
+- Chat mode now expands the workspace list (the host caps it behind an "expand the rest" button, so only five conversations were visible).
 - The switch has no filled container any more (a fixed surface read as a mismatched dark box on the sidebar row); only the active segment carries the host's sidebar-active surface.
 - The switch moved to the right end of the sidebar section header row, beside the search / view-options / new-chat buttons (the row is host-private, so it is drawn as a frame-level overlay anchored to the measured row, with the three buttons pressed left by 70px).
 - Fix: the switch stayed hidden after reopening the app until the sidebar was toggled — a mounted instance could miss the first geometry publish (unchanged-value publishes do not notify) and stay on its initial snapshot; instances now adopt the current snapshot after subscribing. Hiding also requires a confirmed desktop rail now, and the geometry re-measures whenever the strip appears or changes width.

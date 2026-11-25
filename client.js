@@ -918,7 +918,14 @@ window.__ModuleLoader__.load({
           // sidebar alone rather than hiding every row.
         } else if (mode === 'chat') {
           hide('[data-row-key^="workspace:"]')
-          hide('[data-row-key^="overflow:"]')
+          // Only the chat Workspace's own overflow row matters here; the others belong
+          // to hidden workspaces. The chat one is expanded by the effect below, so it
+          // stays hidden too.
+          for (const item of workspaceItems) {
+            if (item === undefined || item.workspaceId === chatWorkspaceId) continue
+            hide(`[data-row-key="overflow:${item.workspaceId}"]`)
+          }
+          hide(`[data-row-key="overflow:${chatWorkspaceId}"]`)
           // The section header keeps its shape but names the list and offers a new
           // conversation instead of a new workspace. The host header is private
           // too, so the text and the glyph are swapped by the same stylesheet.
@@ -1003,6 +1010,28 @@ window.__ModuleLoader__.load({
             cancelCitationHide()
           }
         }, [])
+
+        // The host caps each workspace's list behind an "expand the rest" button. Chat
+        // mode is the whole conversation list, so press it once when it is collapsed;
+        // `aria-expanded` keeps this from toggling it back and forth.
+        React.useEffect(() => {
+          if (mode !== 'chat' || chatWorkspaceId === undefined) return undefined
+          let timer = 0
+          let attempts = 0
+          const expand = () => {
+            if (modeStore.mode() !== 'chat') return
+            const row = document.querySelector('[data-row-key="overflow:' + chatWorkspaceId + '"]')
+            if (row === null) return
+            if (row.getAttribute('aria-expanded') === 'true') return
+            row.click()
+            attempts += 1
+            if (attempts < 4) timer = window.setTimeout(expand, 250)
+          }
+          expand()
+          return () => {
+            if (timer !== 0) window.clearTimeout(timer)
+          }
+        })
 
         const workspaceRef = React.useRef(EMPTY_ITEMS)
         workspaceRef.current = workspaceState?.items ?? EMPTY_ITEMS
