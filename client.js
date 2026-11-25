@@ -101,7 +101,7 @@ window.__ModuleLoader__.load({
      * @param {string} url - citation target.
      * @returns {{ site: string, title: string, snippet: string }} card content.
      */
-    function describeSource (url) {
+    function describeSource (url, hint) {
       const known = sourceIndex.get(url)
       let site = url
       try {
@@ -124,7 +124,7 @@ window.__ModuleLoader__.load({
       }
       return {
         site,
-        title: known?.title ?? loose ?? url,
+        title: known?.title ?? (typeof hint === 'string' && hint !== '' ? hint : undefined) ?? loose ?? url,
         snippet: known?.snippet ?? '',
       }
     }
@@ -867,10 +867,11 @@ window.__ModuleLoader__.load({
 
     /** Styles for a stamped citation marker, matching the web chat's raised index. */
     const CITATION_CSS = [
-      'a.dpc-cite{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:15px;height:15px;margin:0 2px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:1;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
-      'a.dpc-cite>svg{display:none !important}',
-      'a.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:9px;font-weight:600;letter-spacing:0;line-height:1;text-align:center}',
-      '@media (hover:hover){a.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
+      '.dpc-cite{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:15px;height:15px;margin:0 2px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:1;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
+      '.dpc-cite>svg{display:none !important}',
+      '.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:9px;font-weight:600;letter-spacing:0;line-height:1;text-align:center}',
+      '.dpc-cite[data-dpc-bare="true"]{cursor:default;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-tertiary)}',
+      '@media (hover:hover){.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
     ]
 
     /**
@@ -889,6 +890,95 @@ window.__ModuleLoader__.load({
         if (!CITATION_TEXT.test(text)) continue
         anchor.dataset.dpcCite = text.slice(1, -1)
         anchor.classList.add('dpc-cite')
+      }
+    }
+
+    /** Elements whose text must never be turned into a citation chip. */
+    const CITE_SKIP = 'a,code,pre,script,style,textarea,input,button,kbd,samp'
+    /** Text nodes already processed by the bare pass. */
+    const bareDone = new WeakSet()
+
+    /**
+     * Find the numbered source list that belongs to one message.
+     * @param {Text} text - the citation text node.
+     * @param {Element | null} start - element around the citation text.
+     * @returns {Map<number, { href: string, title: string }> | undefined} sources, when found.
+     */
+    function sourcesFor (text, start) {
+      let node = start
+      // Stop below <body>: an ancestor that wide holds other messages, and borrowing
+      // their source lists numbers citations against the wrong article.
+      for (let depth = 0; depth < 16 && node !== null && node !== document.body; depth += 1) {
+        const lists = node.querySelectorAll === undefined ? [] : node.querySelectorAll('ol,ul')
+        for (let index = lists.length - 1; index >= 0; index -= 1) {
+          // The source list sits after the sentence it backs; a list that belongs to an
+          // earlier message must not be borrowed.
+          if ((text.compareDocumentPosition(lists[index]) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) continue
+          const items = lists[index].querySelectorAll('li')
+          const links = lists[index].querySelectorAll('li a[href]')
+          if (items.length < 2 || links.length !== items.length) continue
+          const map = new Map()
+          for (let k = 0; k < links.length; k += 1) {
+            map.set(k + 1, {
+              href: links[k].getAttribute('href') ?? '',
+              title: (links[k].textContent || '').trim(),
+            })
+          }
+          return map
+        }
+        node = node.parentElement
+      }
+      return undefined
+    }
+
+    /**
+     * Repair citations the model wrote as bare `[n]` instead of a link, using the
+     * message's own numbered source list for the target.
+     */
+    function stampBareCitations () {
+      if (typeof document === 'undefined' || typeof NodeFilter === 'undefined') return
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null)
+      let budget = 8000
+      let node = walker.nextNode()
+      while (node !== null && budget > 0) {
+        budget -= 1
+        const value = node.nodeValue
+        const current = node
+        node = walker.nextNode()
+        if (value === null || value.indexOf('[') < 0 || bareDone.has(current)) continue
+        const parent = current.parentElement
+        if (parent === null) { bareDone.add(current); continue }
+        if (parent.closest(CITE_SKIP) !== null) { bareDone.add(current); continue }
+        const pattern = /\[(\d{1,3})\]/g
+        if (!pattern.test(value)) { bareDone.add(current); continue }
+        pattern.lastIndex = 0
+        const sources = sourcesFor(current, parent)
+        // Without a numbered source list there is nothing to point at, and rewriting
+        // arbitrary text would put chips in places like the sidebar's titles.
+        if (sources === undefined) { bareDone.add(current); continue }
+        const fragment = document.createDocumentFragment()
+        let cursor = 0
+        let match = pattern.exec(value)
+        while (match !== null) {
+          fragment.appendChild(document.createTextNode(value.slice(cursor, match.index)))
+          const number = Number(match[1])
+          const source = sources.get(number)
+          const chip = document.createElement('a')
+          chip.className = 'dpc-cite dpc-cite-bare'
+          chip.dataset.dpcCite = String(number)
+          if (source === undefined) {
+            chip.dataset.dpcBare = 'true'
+          } else {
+            chip.setAttribute('href', source.href)
+            chip.dataset.dpcUrl = source.href
+            if (source.title !== '') chip.dataset.dpcTitle = source.title
+          }
+          fragment.appendChild(chip)
+          cursor = match.index + match[0].length
+          match = pattern.exec(value)
+        }
+        fragment.appendChild(document.createTextNode(value.slice(cursor)))
+        if (current.parentNode !== null) current.parentNode.replaceChild(fragment, current)
       }
     }
 
@@ -977,7 +1067,16 @@ window.__ModuleLoader__.load({
         React.useEffect(() => {
           if (typeof MutationObserver !== 'function') return undefined
           let frame = 0
+          let timer = 0
           const schedule = () => {
+            // Repairing bare `[n]` rewrites text nodes, so it waits for the transcript
+            // to settle instead of racing a streaming answer.
+            if (timer !== 0) window.clearTimeout(timer)
+            timer = window.setTimeout(() => {
+              timer = 0
+              stampCitations()
+              stampBareCitations()
+            }, 400)
             if (frame !== 0) return
             frame = requestAnimationFrame(() => {
               frame = 0
@@ -990,22 +1089,27 @@ window.__ModuleLoader__.load({
           return () => {
             observer.disconnect()
             if (frame !== 0) cancelAnimationFrame(frame)
+            if (timer !== 0) window.clearTimeout(timer)
           }
         }, [])
 
         // Hovering a citation chip opens its source card; leaving both closes it.
         React.useEffect(() => {
           const show = (event) => {
-            const node = event.target instanceof Element ? event.target.closest('a.dpc-cite') : null
+            const node = event.target instanceof Element ? event.target.closest('.dpc-cite') : null
             if (node === null) return
-            const url = node.getAttribute('href')
-            if (url === null || url === '') return
+            const url = node.getAttribute('href') ?? node.dataset.dpcUrl ?? ''
+            if (url === '') return
             const rect = node.getBoundingClientRect()
             cancelCitationHide()
-            citationHover.publish({ url, rect: { left: rect.left, top: rect.top } })
+            citationHover.publish({
+              url,
+              title: node.dataset.dpcTitle ?? '',
+              rect: { left: rect.left, top: rect.top },
+            })
           }
           const hide = (event) => {
-            const node = event.target instanceof Element ? event.target.closest('a.dpc-cite') : null
+            const node = event.target instanceof Element ? event.target.closest('.dpc-cite') : null
             if (node === null) return
             scheduleCitationHide()
           }
@@ -1112,7 +1216,7 @@ window.__ModuleLoader__.load({
         React.useEffect(() => citationHover.subscribe(() => setRevision(count => count + 1)), [])
         const hover = citationHover.value
         if (hover === undefined) return null
-        const content = describeSource(hover.url)
+        const content = describeSource(hover.url, hover.title)
         const width = 360
         const left = Math.max(8, Math.min(hover.rect.left, window.innerWidth - width - 12))
         const style = {
