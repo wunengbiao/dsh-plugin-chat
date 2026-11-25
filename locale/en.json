@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Chat mode",
+    "description": "A mode switch beside the sidebar collapse control that opens a conversation-only session: no directory to pick, no coding tools, web search included, and an editable system prompt in Settings.",
+    "detail": "docs/DETAIL.md"
+  }
+}

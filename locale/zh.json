@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "对话模式",
+    "description": "侧边栏折叠按钮左侧的会话模式开关，两种模式互相隔离：对话模式只列对话记录（不显示工作区和目录），写代码模式隐藏对话。system prompt 可在设置里修改。",
+    "detail": "docs/DETAIL.md"
+  }
+}

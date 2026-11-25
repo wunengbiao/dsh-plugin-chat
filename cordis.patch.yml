@@ -1,0 +1,65 @@
+# dsh-plugin-chat bundle layer.
+#
+# Two rows:
+#   - the Host half, which owns the chat Workspace, the chat instructions
+#     section and the two JSON routes the Client half reads;
+#   - the `chat` Agent preset, which is the actual capability set of chat mode:
+#     persona + web search/fetch + ask_user_question + compaction, and no
+#     filesystem, shell, edit, subagent or workflow tool at all.
+#
+# `workspaceDir` empty means "the default chat directory" (`$DSH_HOME`-adjacent
+# home folder, see index.js). Editing `systemPrompt` here is equivalent to
+# saving it from Settings; a saved value in Settings wins.
+- insert:
+    - id: dsh-plugin-chat
+      name: dsh-plugin-chat
+      config:
+        workspaceTitle: 对话
+        systemPrompt: |
+          你是 DeepSeek 的对话助手。这里是纯对话模式：用户只想聊天、提问、查资料，不写代码，也不创建文件。
+          - 用简体中文、自然、简洁地回答；先给结论，再补必要的细节。
+          - 需要事实、版本、价格、新闻或外部链接时，用 web_search 检索、用 web_fetch 打开页面核实，并在回答里给出链接。
+          - 你没有文件、shell、编辑或子代理工具，也不要假装执行过它们；如果用户确实要改代码，提醒他切换到「写代码」模式。
+          - 不确定就说不确定，不要编造来源或数字。
+
+    - id: preset-chat
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: chat
+        name: 对话模式
+        description: 像网页版聊天一样直接对话：不选目录、不写代码，可以联网搜索。
+        order: 2
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are a conversation assistant in DeepSeek Harness chat mode.
+                You can search the web and fetch pages to ground your answers.
+                You have no filesystem, shell, editing, subagent or workflow tools: do not claim to have run them, and do not offer to change a repository from here.
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
