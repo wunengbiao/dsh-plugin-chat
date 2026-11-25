@@ -386,29 +386,29 @@ window.__ModuleLoader__.load({
       if (typeof document === 'undefined') return
       const header = document.querySelector('header[data-window-drag]')
       const headerRect = header === null ? undefined : header.getBoundingClientRect()
-      // Before the shell lays the window out, rects read as zero; measuring then
-      // says nothing about the sidebar. Keep the previous answer and let the retry
-      // loop measure again.
-      if (headerRect !== undefined && headerRect.width === 0) return
-      const section = document.querySelector('[data-sidebar-workspace-header]')
-      const sectionRect = section === null ? undefined : section.getBoundingClientRect()
-      if (sectionRect !== undefined && sectionRect.width > 0) {
-        if (sectionRect.width >= 200) {
-          // The switch lives at the right end of the section header row, with the
-          // row's action buttons pressed aside by the stylesheet.
-          chrome.publish({
-            placement: 'section',
-            right: sectionRect.right,
-            centerY: sectionRect.top + sectionRect.height / 2,
-          })
-          return
-        }
-        // A collapsed rail: nothing is drawn, the row would sit on the window buttons.
+      // Before the shell lays the window out, rects read as zero; measuring then says
+      // nothing about the sidebar. Keep the previous answer and measure again later.
+      if (headerRect !== undefined && (headerRect.width === 0 || headerRect.left === 0)) return
+      const sidebarWidth = headerRect === undefined ? window.innerWidth : headerRect.left
+      // A collapsed rail is identified by the sidebar's own width, not by the section
+      // row: mid-animation that row can still be wide, and drawing the switch then
+      // lands it on the window's traffic lights.
+      if (sidebarWidth < 200) {
         chrome.publish({ placement: 'hidden' })
         return
       }
-      // No section header yet: keep the switch in the conversation header cell
-      // instead of drawing nothing.
+      const section = document.querySelector('[data-sidebar-workspace-header]')
+      const sectionRect = section === null ? undefined : section.getBoundingClientRect()
+      if (sectionRect !== undefined && sectionRect.width > 0) {
+        chrome.publish({
+          placement: 'section',
+          right: sectionRect.right,
+          centerY: sectionRect.top + sectionRect.height / 2,
+        })
+        return
+      }
+      // No section row yet: keep the switch in the conversation header cell instead
+      // of drawing nothing.
       chrome.publish({
         placement: 'header',
         left: headerRect === undefined ? 0 : headerRect.left + 22,
@@ -476,15 +476,26 @@ window.__ModuleLoader__.load({
         // The sidebar row can mount, unmount or come back at any time — a drawer, a
         // narrow window, the user reopening the rail. Watch for it appearing or
         // disappearing and re-measure only on that change.
-        let rowPresent = document.querySelector('[data-sidebar-workspace-header]') !== null
+        let rowSignature = ''
         let watchFrame = 0
+        const rowState = () => {
+          const section = document.querySelector('[data-sidebar-workspace-header]')
+          const header = document.querySelector('header[data-window-drag]')
+          const sectionRect = section === null ? null : section.getBoundingClientRect()
+          const headerRect = header === null ? null : header.getBoundingClientRect()
+          return [
+            sectionRect === null ? 'none' : Math.round(sectionRect.width) + ':' + Math.round(sectionRect.left) + ':' + Math.round(sectionRect.top),
+            headerRect === null ? 'none' : Math.round(headerRect.left),
+          ].join('|')
+        }
+        rowSignature = rowState()
         const watch = () => {
           if (watchFrame !== 0) return
           watchFrame = requestAnimationFrame(() => {
             watchFrame = 0
-            const present = document.querySelector('[data-sidebar-workspace-header]') !== null
-            if (present === rowPresent) return
-            rowPresent = present
+            const signature = rowState()
+            if (signature === rowSignature) return
+            rowSignature = signature
             refreshChrome()
           })
         }
@@ -511,23 +522,24 @@ window.__ModuleLoader__.load({
      */
     function useInfo () {
       const [value, setValue] = React.useState(() => infoCache.value)
+      // Depend on the health flag, never on the payload object: a rejected answer is a
+      // fresh object every time, and keying the retry on it spun a request loop.
+      const healthy = value !== undefined && value.ok === true
       React.useEffect(() => {
-        if (value !== undefined && value.ok === true) return undefined
+        if (healthy) return undefined
         let live = true
         let timer = 0
         let attempts = 0
         const load = () => {
           loadInfo(true).then(next => {
             if (!live) return
-            setValue(next)
-            if (next?.ok !== true && attempts < 12) {
-              attempts += 1
-              timer = window.setTimeout(load, 400)
-            }
-          }, () => {
-            if (!live || attempts >= 12) return
+            if (next?.ok === true) { setValue(next); return }
             attempts += 1
-            timer = window.setTimeout(load, 400)
+            if (attempts < 15) timer = window.setTimeout(load, 800)
+          }, () => {
+            if (!live) return
+            attempts += 1
+            if (attempts < 15) timer = window.setTimeout(load, 800)
           })
         }
         load()
@@ -535,7 +547,7 @@ window.__ModuleLoader__.load({
           live = false
           if (timer !== 0) window.clearTimeout(timer)
         }
-      }, [value])
+      }, [healthy])
       return value
     }
 
@@ -678,7 +690,6 @@ window.__ModuleLoader__.load({
        * @returns {object} React element.
        */
       return function ChatModeSwitch (props) {
-        const variant = props.variant === 'overlay' ? 'overlay' : 'inline'
         const placement = useChrome()
         const t = useTranslate(ctx)
         const useWorkspaces = props.useWorkspaces
@@ -752,16 +763,11 @@ window.__ModuleLoader__.load({
 
         const inSection = placement.placement === 'section'
         const inHeader = placement.placement === 'header'
-        // Exactly one placement renders: the frame-level overlay while the section
-        // header owns the position, the header cell otherwise. A collapsed rail
-        // renders nothing at all.
-        if (variant === 'overlay') {
-          if (!inSection) return null
-        } else if (!inHeader) {
-          return null
-        }
+        // One instance decides its own place, so there is no handoff between two
+        // rendered variants. A collapsed rail draws nothing at all.
+        if (!inSection && !inHeader) return null
 
-        const style = variant === 'overlay'
+        const style = inSection
           ? {
               position: 'fixed',
               left: placement.right - 12,
@@ -769,7 +775,12 @@ window.__ModuleLoader__.load({
               transform: 'translate(-100%, -50%)',
               zIndex: 60,
             }
-          : undefined
+          : {
+              position: 'fixed',
+              left: placement.left,
+              top: placement.top,
+              zIndex: 60,
+            }
 
         const title = error === '' ? t('modeGroup') : t('openFailed') + '：' + error
         // In the section row the action buttons are pressed left to open the space
@@ -1276,11 +1287,17 @@ window.__ModuleLoader__.load({
         // is the closest supported cell — on the collapse control's row, against
         // the sidebar edge.
         const ModeSwitch = createModeSwitch(ctx)
-        const Inline = props => h(ModeSwitch, { ...props, variant: 'inline' })
-        const Overlay = props => h(ModeSwitch, { ...props, variant: 'overlay' })
+        const Overlay = props => h(ModeSwitch, props)
+        // The header cell only reserves the space the floating switch occupies when
+        // the sidebar row is unavailable, keeping the Session title clear of it.
+        const HeaderSpacer = () => {
+          const placement = useChrome()
+          if (placement.placement !== 'header') return null
+          return h('span', { 'aria-hidden': 'true', style: { display: 'inline-block', width: '55px', height: '26px', margin: '0 10px 0 2px' } })
+        }
         ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({
           name: 'conversation.header.leading',
-        }, Inline))
+        }, HeaderSpacer))
         const CitationCard = createCitationCard(ctx)
         // Mode-scoped sidebar: chat mode shows only chat Sessions, code mode
         // hides the chat Workspace entirely.

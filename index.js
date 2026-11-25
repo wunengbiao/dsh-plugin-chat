@@ -443,15 +443,34 @@ export async function apply (ctx, config) {
   state.storageReason = stored.reason
   state.prompt = stored.prompt ?? settings.systemPrompt
 
-  try {
-    const dir = await ensureDirectory(settings.workspaceDir)
-    const workspace = await ensureWorkspace(ctx, dir, settings.workspaceTitle)
-    state.workspacePath = workspace === undefined ? dir : workspace.path
-    state.workspaceId = workspace === undefined ? undefined : workspace.id
-  } catch (error) {
-    state.workspaceId = undefined
-    state.workspacePath = settings.workspaceDir
-    ctx.logger?.warn?.(`dsh-plugin-chat: chat workspace unavailable: ${messageOf(error)}`)
+  // Provision lazily: the workspace registry may mount after this row, and a plain
+  // `ctx.get` would then read undefined and leave chat mode without a Workspace for
+  // the rest of the process. `ctx.inject` runs the callback once it is available.
+  const provision = async (scoped) => {
+    try {
+      const dir = await ensureDirectory(settings.workspaceDir)
+      let workspace
+      try {
+        workspace = await ensureWorkspace(scoped, dir, settings.workspaceTitle)
+      } catch (error) {
+        // A failed create is usually a race with another record for the same path;
+        // resolving again picks that record up.
+        workspace = await ensureWorkspace(scoped, dir, settings.workspaceTitle)
+        if (workspace === undefined) throw error
+      }
+      state.workspacePath = workspace === undefined ? dir : workspace.path
+      state.workspaceId = workspace === undefined ? undefined : workspace.id
+    } catch (error) {
+      state.workspaceId = undefined
+      state.workspacePath = settings.workspaceDir
+      ctx.logger?.warn?.(`dsh-plugin-chat: chat workspace unavailable: ${messageOf(error)}`)
+    }
+  }
+  state.workspacePath = settings.workspaceDir
+  if (typeof ctx.inject === 'function') {
+    ctx.inject(['workspaceRegistry'], (scoped) => { void provision(scoped) })
+  } else {
+    await provision(ctx)
   }
 
   if (releaseRoutes === undefined) {
