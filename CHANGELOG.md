@@ -10,4 +10,5 @@ First release.
 - A provisioned chat Workspace (`~/DSH-Chat`, name 对话) so a chat never asks for a directory.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
+- Bracketed link citations: the default prompt asks for `[[n]](url)` markers plus a 来源 section, so answers render clickable `[1]` citations instead of dead brackets.
 - Composer cleanup in chat mode: sandbox preset, third-party mode selector, and the new-session workspace/preset pickers are hidden.
