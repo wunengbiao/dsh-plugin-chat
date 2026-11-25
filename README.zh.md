@@ -5,8 +5,8 @@
 给 DeepSeek Harness 加一个「对话模式」：侧边栏折叠按钮旁两段式开关，切过去就是一个只聊天的会话——不选目录、没有写代码工具、可以联网搜索、system prompt 可改。
 
 ```
-🐟 deepseek HARNESS  ( 对话 | </> )  ⧉          ← 桌面端（展开侧边栏）：贴在折叠按钮左侧
-🐟 deepseek HARNESS  ⧉ │ ( 对话 | </> )  标题     ← 浏览器版（展开侧边栏）
+🐟 deepseek HARNESS  ( 对话 | </> )  ⧉          ← 侧边栏标题行最右侧（三个按钮右边）
+🐟 deepseek HARNESS  ⧉ │ 标题 对话模式              ← 会话标题行
                                                   （折叠成窄条时整条隐藏）
 ```
 

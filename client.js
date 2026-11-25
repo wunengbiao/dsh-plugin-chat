@@ -347,18 +347,19 @@ window.__ModuleLoader__.load({
      * @type {{ value: { present: boolean, toggleLeft?: number, toggleCenterY?: number }, listeners: Set<() => void> }}
      */
     const chrome = {
-      value: { present: false },
+      value: { placement: 'header' },
       listeners: new Set(),
       /**
-       * @param {{ present: boolean, toggleLeft?: number, toggleCenterY?: number }} value - measured placement.
+       * @param {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number }} value - measured placement.
        */
       publish (value) {
         const current = this.value
         if (
-          current.present === value.present
-          && current.hidden === value.hidden
-          && current.toggleLeft === value.toggleLeft
-          && current.toggleCenterY === value.toggleCenterY
+          current.placement === value.placement
+          && current.right === value.right
+          && current.centerY === value.centerY
+          && current.left === value.left
+          && current.top === value.top
         ) return
         this.value = value
         for (const listener of this.listeners) listener()
@@ -386,34 +387,35 @@ window.__ModuleLoader__.load({
       // says nothing about the sidebar. Keep the previous answer and let the retry
       // loop measure again.
       if (headerRect !== undefined && headerRect.width === 0) return
-      const strip = document.querySelector('[class*="topStrip"]')
-      const toggle = strip === null ? null : strip.querySelector('[data-sidebar-toggle]')
-      const stripWidth = strip === null ? 0 : strip.getBoundingClientRect().width
-      if (strip !== null && toggle !== null && stripWidth > 0) {
-        const toggleRect = toggle.getBoundingClientRect()
-        if (stripWidth >= 200 && toggleRect.width > 0) {
+      const section = document.querySelector('[data-sidebar-workspace-header]')
+      const sectionRect = section === null ? undefined : section.getBoundingClientRect()
+      if (sectionRect !== undefined && sectionRect.width > 0) {
+        if (sectionRect.width >= 200) {
+          // The switch lives at the right end of the section header row, with the
+          // row's action buttons pressed aside by the stylesheet.
           chrome.publish({
-            present: true,
-            toggleLeft: toggleRect.left,
-            toggleCenterY: toggleRect.top + toggleRect.height / 2,
+            placement: 'section',
+            right: sectionRect.right,
+            centerY: sectionRect.top + sectionRect.height / 2,
           })
           return
         }
-        // A collapsed desktop rail: the header starts inside the traffic-light
-        // band there, so nothing is drawn at all.
-        chrome.publish({ present: false, hidden: stripWidth < 200 })
+        // A collapsed rail: nothing is drawn, the row would sit on the window buttons.
+        chrome.publish({ placement: 'hidden' })
         return
       }
-      // No chrome strip (the browser shell) or one that has not been laid out yet:
-      // keep the switch in the header cell. Hiding it here used to depend on a
-      // header rect that reads as 0 during the first frames, which left the user
-      // with no switch until the sidebar was toggled.
-      chrome.publish({ present: false, hidden: false })
+      // No section header yet: keep the switch in the conversation header cell
+      // instead of drawing nothing.
+      chrome.publish({
+        placement: 'header',
+        left: headerRect === undefined ? 0 : headerRect.left + 22,
+        top: headerRect === undefined ? 12 : headerRect.top + 12,
+      })
     }
 
     /**
      * Track the sidebar chrome strip across resizes and sidebar toggles.
-     * @returns {{ present: boolean, toggleLeft?: number, toggleCenterY?: number }} placement.
+     * @returns {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number }} placement.
      */
     function useChrome () {
       const [value, setValue] = React.useState(chrome.value)
@@ -434,10 +436,10 @@ window.__ModuleLoader__.load({
         // snapshot and therefore render nothing.
         const adopt = () => setValue(chrome.value)
         const signatureOf = () => {
-          const strip = document.querySelector('[class*="topStrip"]')
-          const toggle = strip === null ? null : strip.querySelector('[data-sidebar-toggle]')
-          if (strip === null || toggle === null) return 'none'
-          return Math.round(strip.getBoundingClientRect().width) + ':' + Math.round(toggle.getBoundingClientRect().left)
+          const section = document.querySelector('[data-sidebar-workspace-header]')
+          if (section === null) return 'none'
+          const rect = section.getBoundingClientRect()
+          return Math.round(rect.width) + ':' + Math.round(rect.left) + ':' + Math.round(rect.top)
         }
         const settle = () => {
           const signature = signatureOf()
@@ -448,7 +450,7 @@ window.__ModuleLoader__.load({
           attempts += 1
           // Keep going until the shell has settled for a while, so a window that is
           // still being laid out cannot freeze a provisional answer.
-          if ((chrome.value.present === true && stableTicks >= 4) || attempts > 120) {
+          if ((chrome.value.placement === 'section' && stableTicks >= 4) || attempts > 120) {
             if (timer !== 0) window.clearInterval(timer)
             timer = 0
           }
@@ -468,18 +470,18 @@ window.__ModuleLoader__.load({
           : undefined
         if (observer !== undefined) observer.observe(observed)
 
-        // The sidebar (and the strip inside it) can mount, unmount or come back at any
-        // time — a drawer, a narrow window, the user reopening the rail. Watch for the
-        // strip appearing or disappearing and re-measure only on that change.
-        let stripPresent = document.querySelector('[class*="topStrip"]') !== null
+        // The sidebar row can mount, unmount or come back at any time — a drawer, a
+        // narrow window, the user reopening the rail. Watch for it appearing or
+        // disappearing and re-measure only on that change.
+        let rowPresent = document.querySelector('[data-sidebar-workspace-header]') !== null
         let watchFrame = 0
         const watch = () => {
           if (watchFrame !== 0) return
           watchFrame = requestAnimationFrame(() => {
             watchFrame = 0
-            const present = document.querySelector('[class*="topStrip"]') !== null
-            if (present === stripPresent) return
-            stripPresent = present
+            const present = document.querySelector('[data-sidebar-workspace-header]') !== null
+            if (present === rowPresent) return
+            rowPresent = present
             refreshChrome()
           })
         }
@@ -745,29 +747,35 @@ window.__ModuleLoader__.load({
           strokeLinejoin: 'round',
         }))))
 
-        const floating = placement.present === true
-        // Exactly one placement renders: the overlay while the shell owns the
-        // sidebar strip, the header cell otherwise. On a collapsed rail nothing
-        // renders, so the control never lands on the window's traffic lights.
+        const inSection = placement.placement === 'section'
+        const inHeader = placement.placement === 'header'
+        // Exactly one placement renders: the frame-level overlay while the section
+        // header owns the position, the header cell otherwise. A collapsed rail
+        // renders nothing at all.
         if (variant === 'overlay') {
-          if (!floating) return null
-        } else if (floating || placement.hidden === true) {
+          if (!inSection) return null
+        } else if (!inHeader) {
           return null
         }
 
         const style = variant === 'overlay'
           ? {
               position: 'fixed',
-              left: placement.toggleLeft - 8,
-              top: placement.toggleCenterY,
+              left: placement.right - 12,
+              top: placement.centerY,
               transform: 'translate(-100%, -50%)',
               zIndex: 60,
             }
           : undefined
 
         const title = error === '' ? t('modeGroup') : t('openFailed') + '：' + error
+        // In the section row the action buttons are pressed left to open the space
+        // the switch occupies at the row's right end.
+        const rowRule = inSection
+          ? '[data-sidebar-workspace-header] [class*="headerActions"]{margin-right:70px !important}'
+          : ''
         return h('div', { className: 'dpc-mode', style },
-          h('style', null, SWITCH_CSS),
+          h('style', null, SWITCH_CSS + rowRule),
           h('div', {
             className: 'dpc-switch',
             role: 'group',
