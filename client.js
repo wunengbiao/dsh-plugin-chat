@@ -24,6 +24,111 @@ window.__ModuleLoader__.load({
     const MODE_KEY = 'dsh-plugin-chat:mode'
     const CHAT_PRESET = 'chat'
     const EMPTY_ITEMS = []
+    /**
+     * Sources this conversation's web tools returned, keyed by URL. Filled from the
+     * session's own `tool/result` events, so a citation's hover card shows the real
+     * search result rather than a re-fetch.
+     * @type {Map<string, { title?: string, snippet?: string }>}
+     */
+    const sourceIndex = new Map()
+
+    /** Hover state of one citation chip: its URL and viewport rect. */
+    const citationHover = {
+      value: undefined,
+      listeners: new Set(),
+      /**
+       * @param {{ url: string, rect: { left: number, top: number } } | undefined} value - hovered chip.
+       */
+      publish (value) {
+        this.value = value
+        for (const listener of this.listeners) listener()
+      },
+      /**
+       * @param {() => void} listener - re-render callback.
+       * @returns {() => void} unsubscribe.
+       */
+      subscribe (listener) {
+        this.listeners.add(listener)
+        return () => { this.listeners.delete(listener) }
+      },
+    }
+
+    /** Pending hide timer for a citation hover card. */
+    let citationHideTimer = 0
+
+    /** Give the pointer time to travel from the chip into the card. */
+    function scheduleCitationHide () {
+      if (citationHideTimer !== 0) clearTimeout(citationHideTimer)
+      citationHideTimer = window.setTimeout(() => {
+        citationHideTimer = 0
+        citationHover.publish(undefined)
+      }, 200)
+    }
+
+    /** Cancel a pending hide. */
+    function cancelCitationHide () {
+      if (citationHideTimer === 0) return
+      clearTimeout(citationHideTimer)
+      citationHideTimer = 0
+    }
+
+    /**
+     * Index every web result carried by the session's tool events.
+     * @param {{ entries?: readonly { event?: { type?: string, data?: { meta?: { sources?: readonly { url?: string, title?: string, snippet?: string }[] } } } }[] }} window - session event window.
+     */
+    function indexSources (window) {
+      const entries = window?.entries ?? []
+      let changed = false
+      for (const entry of entries) {
+        const event = entry?.event
+        if (event?.type !== 'tool/result') continue
+        const sources = event.data?.meta?.sources
+        if (!Array.isArray(sources)) continue
+        for (const source of sources) {
+          const url = typeof source?.url === 'string' ? source.url : undefined
+          if (url === undefined || sourceIndex.has(url)) continue
+          sourceIndex.set(url, {
+            title: typeof source.title === 'string' ? source.title : undefined,
+            snippet: typeof source.snippet === 'string' ? source.snippet : undefined,
+          })
+          changed = true
+        }
+      }
+      if (changed) citationHover.publish(citationHover.value)
+    }
+
+    /**
+     * @param {string} url - citation target.
+     * @returns {{ site: string, title: string, snippet: string }} card content.
+     */
+    function describeSource (url) {
+      const known = sourceIndex.get(url)
+      let site = url
+      try {
+        site = new URL(url).hostname.replace(/^www\./, '')
+      } catch {
+        site = url
+      }
+      // A fetched page has no search snippet; the answer's own source list usually
+      // links the same URL under its page title, which is the next best label.
+      let loose
+      if (known?.title === undefined) {
+        for (const anchor of document.querySelectorAll('a[href]')) {
+          if (anchor.getAttribute('href') !== url) continue
+          if (anchor.classList.contains('dpc-cite')) continue
+          const text = (anchor.textContent || '').trim()
+          if (text === '' || text === url || text.startsWith('http')) continue
+          loose = text
+          break
+        }
+      }
+      return {
+        site,
+        title: known?.title ?? loose ?? url,
+        snippet: known?.snippet ?? '',
+      }
+    }
+
     /** A citation marker: the link text a chat answer uses for a source. */
     const CITATION_TEXT = /^\[\d{1,3}\]$/
     /** Sprite id of the host's "add workspace" header button icon. */
@@ -582,6 +687,18 @@ window.__ModuleLoader__.load({
           }
         }, [key, isChat])
 
+        // The same session binding carries the tool results the answers cite, so the
+        // hover card can show the real search result for a cited URL.
+        React.useEffect(() => {
+          if (key === undefined) return undefined
+          const binding = typeof ctx.sessions?.binding === 'function' ? ctx.sessions.binding(key) : undefined
+          if (binding === undefined || binding === null) return undefined
+          const source = binding.eventSource
+          const read = () => { indexSources(source.getSnapshot()) }
+          read()
+          return source.subscribe(read)
+        }, [key])
+
         return null
       }
     }
@@ -722,6 +839,35 @@ window.__ModuleLoader__.load({
           }
         }, [])
 
+        // Hovering a citation chip opens its source card; leaving both closes it.
+        React.useEffect(() => {
+          const show = (event) => {
+            const node = event.target instanceof Element ? event.target.closest('a.dpc-cite') : null
+            if (node === null) return
+            const url = node.getAttribute('href')
+            if (url === null || url === '') return
+            const rect = node.getBoundingClientRect()
+            cancelCitationHide()
+            citationHover.publish({ url, rect: { left: rect.left, top: rect.top } })
+          }
+          const hide = (event) => {
+            const node = event.target instanceof Element ? event.target.closest('a.dpc-cite') : null
+            if (node === null) return
+            scheduleCitationHide()
+          }
+          document.addEventListener('mouseover', show)
+          document.addEventListener('mouseout', hide)
+          document.addEventListener('focusin', show)
+          document.addEventListener('focusout', hide)
+          return () => {
+            document.removeEventListener('mouseover', show)
+            document.removeEventListener('mouseout', hide)
+            document.removeEventListener('focusin', show)
+            document.removeEventListener('focusout', hide)
+            cancelCitationHide()
+          }
+        }, [])
+
         const workspaceRef = React.useRef(EMPTY_ITEMS)
         workspaceRef.current = workspaceState?.items ?? EMPTY_ITEMS
 
@@ -763,6 +909,62 @@ window.__ModuleLoader__.load({
         rules.push(...CITATION_CSS)
 
         return h('style', { 'data-dsh-plugin-chat': 'sidebar-filter' }, rules.join('\n'))
+      }
+    }
+
+    /** Styles for a citation hover card. */
+    const CITE_CARD_CSS = [
+      '.dpc-cite-card{box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:0.5px solid var(--dsw-alias-border-l3);border-radius:12px;background:var(--dsw-alias-bg-overlay);box-shadow:0 8px 24px rgba(15,17,21,.18);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px}',
+      '.dpc-cite-card-head{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}',
+      '.dpc-cite-card-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:9px;font-weight:700}',
+      '.dpc-cite-card-site{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.dpc-cite-card-title{font-size:13px;line-height:19px;font-weight:600;color:var(--dsw-alias-label-primary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+      '.dpc-cite-card-snippet{color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+      '.dpc-cite-card-link{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '@media (hover:hover){.dpc-cite-card-link:hover{color:var(--dsw-alias-brand-primary)}}',
+    ].join('')
+
+    /**
+     * Build the citation hover card: the source title and snippet the answer cited,
+     * read from the session's own web tool results.
+     * @param {object} ctx - client plugin context.
+     * @returns {Function} React component rendering a floating card or nothing.
+     */
+    function createCitationCard (ctx) {
+      return function CitationCard () {
+        const [, setRevision] = React.useState(0)
+        React.useEffect(() => citationHover.subscribe(() => setRevision(count => count + 1)), [])
+        const hover = citationHover.value
+        if (hover === undefined) return null
+        const content = describeSource(hover.url)
+        const width = 360
+        const left = Math.max(8, Math.min(hover.rect.left, window.innerWidth - width - 12))
+        const style = {
+          position: 'fixed',
+          left,
+          bottom: Math.max(8, window.innerHeight - hover.rect.top + 8),
+          width,
+          zIndex: 70,
+        }
+        return h('div', {
+          className: 'dpc-cite-card',
+          style,
+          role: 'tooltip',
+          onMouseEnter: cancelCitationHide,
+          onMouseLeave: scheduleCitationHide,
+        },
+        h('style', null, CITE_CARD_CSS),
+        h('div', { className: 'dpc-cite-card-head' },
+          h('span', { className: 'dpc-cite-card-badge' }, content.site.slice(0, 1).toUpperCase()),
+          h('span', { className: 'dpc-cite-card-site' }, content.site)),
+        h('div', { className: 'dpc-cite-card-title' }, content.title),
+        content.snippet === '' ? null : h('div', { className: 'dpc-cite-card-snippet' }, content.snippet),
+        h('a', {
+          className: 'dpc-cite-card-link',
+          href: hover.url,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        }, hover.url))
       }
     }
 
@@ -898,7 +1100,7 @@ window.__ModuleLoader__.load({
     return {
       // `workspaces` creates the chat Workspace record when the Host row has
       // not reached this browser yet; `uiWorkspace` opens the Sessions.
-      inject: ['slots', 'locale', 'uiWorkspace', 'workspaces'],
+      inject: ['slots', 'locale', 'uiWorkspace', 'workspaces', 'sessions'],
       apply (ctx) {
         ctx.effect(() => ctx.locale.register('dsh-plugin-chat', { en, zh }), 'dsh-plugin-chat: dictionaries')
 
@@ -921,6 +1123,13 @@ window.__ModuleLoader__.load({
           id: 'dsh-plugin-chat-switch',
           order: 5,
         }, Overlay))
+
+        const CitationCard = createCitationCard(ctx)
+        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+          name: 'shell.overlay',
+          id: 'dsh-plugin-chat-citation-card',
+          order: 7,
+        }, CitationCard))
 
         // Mode-scoped sidebar: chat mode shows only chat Sessions, code mode
         // hides the chat Workspace entirely.
