@@ -381,7 +381,12 @@ window.__ModuleLoader__.load({
     function refreshChrome () {
       if (typeof document === 'undefined') return
       const header = document.querySelector('header[data-window-drag]')
-      const edge = header === null ? window.innerWidth : header.getBoundingClientRect().left
+      const headerRect = header === null ? undefined : header.getBoundingClientRect()
+      // Before the shell lays the header out its rect is zero, which says nothing
+      // about the sidebar; publishing that would hide the switch until a later
+      // resize. Keep the previous answer and let the retry loop measure again.
+      if (headerRect !== undefined && headerRect.width === 0) return
+      const edge = headerRect === undefined ? window.innerWidth : headerRect.left
       const strip = document.querySelector('[class*="topStrip"]')
       const toggle = strip === null ? null : strip.querySelector('[data-sidebar-toggle]')
       if (strip !== null && toggle !== null) {
@@ -410,9 +415,29 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         const sync = () => setValue(chrome.value)
         const release = chrome.subscribe(sync)
+
+        // The sidebar (and with it the desktop chrome strip) can mount a frame or
+        // more after the header, so one measurement at mount is not enough: keep
+        // re-measuring briefly until the strip is found or the budget runs out.
+        let timer = 0
+        let attempts = 0
+        const settle = () => {
+          refreshChrome()
+          attempts += 1
+          // Stop once the strip is found, or after ~3s of a consistent answer.
+          if (chrome.value.present === true || attempts > 25) {
+            if (timer !== 0) window.clearInterval(timer)
+            timer = 0
+          }
+        }
         refreshChrome()
+        timer = window.setInterval(settle, 120)
+        const frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(settle) : 0
+
         const onResize = () => { refreshChrome() }
         window.addEventListener('resize', onResize)
+        window.addEventListener('focus', onResize)
+        document.addEventListener('visibilitychange', onResize)
         const observed = document.querySelector('header[data-window-drag]') ?? document.querySelector('[class*="topStrip"]')
         const observer = observed !== null && observed !== undefined && typeof ResizeObserver === 'function'
           ? new ResizeObserver(onResize)
@@ -420,6 +445,10 @@ window.__ModuleLoader__.load({
         if (observer !== undefined) observer.observe(observed)
         return () => {
           window.removeEventListener('resize', onResize)
+          window.removeEventListener('focus', onResize)
+          document.removeEventListener('visibilitychange', onResize)
+          if (timer !== 0) window.clearInterval(timer)
+          if (frame !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame)
           if (observer !== undefined) observer.disconnect()
           release()
         }
