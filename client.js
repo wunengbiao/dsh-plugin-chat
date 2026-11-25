@@ -723,9 +723,9 @@ window.__ModuleLoader__.load({
 
     /** Styles for a stamped citation marker, matching the web chat's raised index. */
     const CITATION_CSS = [
-      'a.dpc-cite{display:inline-block;box-sizing:border-box;height:15px;padding:0 3px;margin:0 2px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:15px;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
+      'a.dpc-cite{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:15px;height:15px;margin:0 2px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:1;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
       'a.dpc-cite>svg{display:none !important}',
-      'a.dpc-cite::after{content:attr(data-dpc-cite);display:inline-block;min-width:8px;height:15px;font-size:10px;font-weight:600;letter-spacing:0;line-height:15px;text-align:center;vertical-align:baseline}',
+      'a.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:9px;font-weight:600;letter-spacing:0;line-height:1;text-align:center}',
       '@media (hover:hover){a.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
     ]
 
@@ -916,7 +916,7 @@ window.__ModuleLoader__.load({
     const CITE_CARD_CSS = [
       '.dpc-cite-card{box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:0.5px solid var(--dsw-alias-border-l3);border-radius:12px;background:var(--dsw-alias-bg-overlay);box-shadow:0 8px 24px rgba(15,17,21,.18);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px}',
       '.dpc-cite-card-head{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}',
-      '.dpc-cite-card-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:9px;font-weight:700}',
+      '.dpc-cite-card-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:9px;font-weight:700}',
       '.dpc-cite-card-site{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.dpc-cite-card-title{font-size:13px;line-height:19px;font-weight:600;color:var(--dsw-alias-label-primary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
       '.dpc-cite-card-snippet{color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',

@@ -11,6 +11,6 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - Citation hover card: hovering a chip shows the cited source — site, title, snippet and URL — read from the session's own `web_search` results, with the answer's source-list title as the fallback for fetched pages.
-- Citation chips: a `[[n]](url)` citation renders as a small raised index badge (rounded, subtle background, no link glyph) and still opens the source; the DOM layer re-stamps streamed answers.
+- Citation chips: a `[[n]](url)` citation renders as a small raised circular index badge (subtle background, no link glyph) and still opens the source; the DOM layer re-stamps streamed answers.
 - Bracketed link citations: the default prompt asks for `[[n]](url)` markers plus a 来源 section, so answers render clickable `[1]` citations instead of dead brackets.
 - Composer cleanup in chat mode: sandbox preset, third-party mode selector, and the new-session workspace/preset pickers are hidden.
