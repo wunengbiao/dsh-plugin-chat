@@ -382,17 +382,16 @@ window.__ModuleLoader__.load({
       if (typeof document === 'undefined') return
       const header = document.querySelector('header[data-window-drag]')
       const headerRect = header === null ? undefined : header.getBoundingClientRect()
-      // Before the shell lays the header out its rect is zero, which says nothing
-      // about the sidebar; publishing that would hide the switch until a later
-      // resize. Keep the previous answer and let the retry loop measure again.
+      // Before the shell lays the window out, rects read as zero; measuring then
+      // says nothing about the sidebar. Keep the previous answer and let the retry
+      // loop measure again.
       if (headerRect !== undefined && headerRect.width === 0) return
-      const edge = headerRect === undefined ? window.innerWidth : headerRect.left
       const strip = document.querySelector('[class*="topStrip"]')
       const toggle = strip === null ? null : strip.querySelector('[data-sidebar-toggle]')
-      if (strip !== null && toggle !== null) {
-        const stripRect = strip.getBoundingClientRect()
+      const stripWidth = strip === null ? 0 : strip.getBoundingClientRect().width
+      if (strip !== null && toggle !== null && stripWidth > 0) {
         const toggleRect = toggle.getBoundingClientRect()
-        if (stripRect.width >= 200 && toggleRect.width > 0) {
+        if (stripWidth >= 200 && toggleRect.width > 0) {
           chrome.publish({
             present: true,
             toggleLeft: toggleRect.left,
@@ -400,10 +399,16 @@ window.__ModuleLoader__.load({
           })
           return
         }
+        // A collapsed desktop rail: the header starts inside the traffic-light
+        // band there, so nothing is drawn at all.
+        chrome.publish({ present: false, hidden: stripWidth < 200 })
+        return
       }
-      // No strip, or a collapsed rail: the header would start inside the window's
-      // traffic-light band, so the switch is hidden instead of overlapping it.
-      chrome.publish({ present: false, hidden: edge < 200 })
+      // No chrome strip (the browser shell) or one that has not been laid out yet:
+      // keep the switch in the header cell. Hiding it here used to depend on a
+      // header rect that reads as 0 during the first frames, which left the user
+      // with no switch until the sidebar was toggled.
+      chrome.publish({ present: false, hidden: false })
     }
 
     /**
@@ -421,11 +426,23 @@ window.__ModuleLoader__.load({
         // re-measuring briefly until the strip is found or the budget runs out.
         let timer = 0
         let attempts = 0
+        let lastSignature = ''
+        let stableTicks = 0
+        const signatureOf = () => {
+          const strip = document.querySelector('[class*="topStrip"]')
+          const toggle = strip === null ? null : strip.querySelector('[data-sidebar-toggle]')
+          if (strip === null || toggle === null) return 'none'
+          return Math.round(strip.getBoundingClientRect().width) + ':' + Math.round(toggle.getBoundingClientRect().left)
+        }
         const settle = () => {
+          const signature = signatureOf()
+          if (signature === lastSignature) stableTicks += 1
+          else { lastSignature = signature; stableTicks = 0 }
           refreshChrome()
           attempts += 1
-          // Stop once the strip is found, or after ~3s of a consistent answer.
-          if (chrome.value.present === true || attempts > 25) {
+          // Keep going until the shell has settled for a while, so a window that is
+          // still being laid out cannot freeze a provisional answer.
+          if ((chrome.value.present === true && stableTicks >= 4) || attempts > 120) {
             if (timer !== 0) window.clearInterval(timer)
             timer = 0
           }
