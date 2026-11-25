@@ -24,6 +24,8 @@ window.__ModuleLoader__.load({
     const MODE_KEY = 'dsh-plugin-chat:mode'
     const CHAT_PRESET = 'chat'
     const EMPTY_ITEMS = []
+    /** A citation marker: the link text a chat answer uses for a source. */
+    const CITATION_TEXT = /^\[\d{1,3}\]$/
     /** Sprite id of the host's "add workspace" header button icon. */
     const ADD_WORKSPACE_ICON = 'dsw-icon-project-add-outline-regular'
     /** Replacement glyph for chat mode: a speech bubble with a plus. */
@@ -602,6 +604,33 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** Styles for a stamped citation marker, matching the web chat's raised index. */
+    const CITATION_CSS = [
+      'a.dpc-cite{display:inline-block;box-sizing:border-box;height:15px;padding:0 3px;margin:0 2px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:15px;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
+      'a.dpc-cite>svg{display:none !important}',
+      'a.dpc-cite::after{content:attr(data-dpc-cite);display:inline-block;min-width:8px;height:15px;font-size:10px;font-weight:600;letter-spacing:0;line-height:15px;text-align:center;vertical-align:baseline}',
+      '@media (hover:hover){a.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
+    ]
+
+    /**
+     * Turn a rendered citation link into the raised index badge.
+     *
+     * Chat answers cite sources as `[[1]](url)`, which the host renders as an
+     * ordinary link carrying a glyph and the literal `[1]`. Only a class and a
+     * data attribute are written here — the link keeps its href and its click
+     * behavior — so a streamed re-render simply gets stamped again.
+     */
+    function stampCitations () {
+      if (typeof document === 'undefined') return
+      for (const anchor of document.querySelectorAll('a[href]')) {
+        if (anchor.classList.contains('dpc-cite')) continue
+        const text = (anchor.textContent || '').trim()
+        if (!CITATION_TEXT.test(text)) continue
+        anchor.dataset.dpcCite = text.slice(1, -1)
+        anchor.classList.add('dpc-cite')
+      }
+    }
+
     /**
      * Narrow the sidebar to the active mode.
      *
@@ -674,6 +703,25 @@ window.__ModuleLoader__.load({
           for (const id of chatSessions) hide(sessionRow(id))
         }
 
+        React.useEffect(() => {
+          if (typeof MutationObserver !== 'function') return undefined
+          let frame = 0
+          const schedule = () => {
+            if (frame !== 0) return
+            frame = requestAnimationFrame(() => {
+              frame = 0
+              stampCitations()
+            })
+          }
+          const observer = new MutationObserver(schedule)
+          observer.observe(document.body, { childList: true, subtree: true })
+          stampCitations()
+          return () => {
+            observer.disconnect()
+            if (frame !== 0) cancelAnimationFrame(frame)
+          }
+        }, [])
+
         const workspaceRef = React.useRef(EMPTY_ITEMS)
         workspaceRef.current = workspaceState?.items ?? EMPTY_ITEMS
 
@@ -708,6 +756,11 @@ window.__ModuleLoader__.load({
           if (button.dataset.dpcTitle === '' && !chatMode) button.removeAttribute('title')
           else button.setAttribute('title', chatMode ? label : button.dataset.dpcTitle)
         })
+
+        // Citation markers render like the web chat: a small raised index badge
+        // instead of an inline link with a glyph. The link itself is untouched, so
+        // it still opens the source; only its text is replaced by the badge.
+        rules.push(...CITATION_CSS)
 
         return h('style', { 'data-dsh-plugin-chat': 'sidebar-filter' }, rules.join('\n'))
       }

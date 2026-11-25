@@ -26,7 +26,7 @@ Chat mode for DeepSeek Harness: a two-state switch beside the sidebar collapse c
 
 The sidebar follows the mode. In chat mode every workspace row and every non-chat Session is hidden and the remaining rows drop their depth padding and leading status cell, so the sidebar is a flush-left list of conversations; the section header reads 对话 and its add button becomes new chat, while the chat Workspace itself never appears as a folder. The composer drops the sandbox-preset and third-party mode controls, which only matter for code work. In code mode that Workspace and all of its Sessions are hidden instead, so the two sets never mix.
 
-The default prompt asks the model for `[[n]](url)` citations plus a 来源 section, so answers render clickable `[1]` markers instead of dead brackets.
+The default prompt asks the model for `[[n]](url)` citations plus a 来源 section, so answers render a small raised index badge instead of dead brackets, and the badge still opens the source.
 
 The host's session list exposes no filtering seat, so the filter is one generated stylesheet over the host's own `data-row-key` rows (`workspace:<id>` / `session:<id>`). Nothing in the host tree is mutated, and creating a Session re-runs the filter.
 
