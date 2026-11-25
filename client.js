@@ -443,6 +443,24 @@ window.__ModuleLoader__.load({
           ? new ResizeObserver(onResize)
           : undefined
         if (observer !== undefined) observer.observe(observed)
+
+        // The sidebar (and the strip inside it) can mount, unmount or come back at any
+        // time — a drawer, a narrow window, the user reopening the rail. Watch for the
+        // strip appearing or disappearing and re-measure only on that change.
+        let stripPresent = document.querySelector('[class*="topStrip"]') !== null
+        let watchFrame = 0
+        const watch = () => {
+          if (watchFrame !== 0) return
+          watchFrame = requestAnimationFrame(() => {
+            watchFrame = 0
+            const present = document.querySelector('[class*="topStrip"]') !== null
+            if (present === stripPresent) return
+            stripPresent = present
+            refreshChrome()
+          })
+        }
+        const domObserver = typeof MutationObserver === 'function' ? new MutationObserver(watch) : undefined
+        if (domObserver !== undefined) domObserver.observe(document.body, { childList: true, subtree: true })
         return () => {
           window.removeEventListener('resize', onResize)
           window.removeEventListener('focus', onResize)
@@ -450,6 +468,8 @@ window.__ModuleLoader__.load({
           if (timer !== 0) window.clearInterval(timer)
           if (frame !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame)
           if (observer !== undefined) observer.disconnect()
+          if (domObserver !== undefined) domObserver.disconnect()
+          if (watchFrame !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(watchFrame)
           release()
         }
       }, [])
@@ -463,10 +483,29 @@ window.__ModuleLoader__.load({
     function useInfo () {
       const [value, setValue] = React.useState(() => infoCache.value)
       React.useEffect(() => {
-        if (value !== undefined) return undefined
+        if (value !== undefined && value.ok === true) return undefined
         let live = true
-        loadInfo(false).then(next => { if (live) setValue(next) }, () => {})
-        return () => { live = false }
+        let timer = 0
+        let attempts = 0
+        const load = () => {
+          loadInfo(true).then(next => {
+            if (!live) return
+            setValue(next)
+            if (next?.ok !== true && attempts < 12) {
+              attempts += 1
+              timer = window.setTimeout(load, 400)
+            }
+          }, () => {
+            if (!live || attempts >= 12) return
+            attempts += 1
+            timer = window.setTimeout(load, 400)
+          })
+        }
+        load()
+        return () => {
+          live = false
+          if (timer !== 0) window.clearTimeout(timer)
+        }
       }, [value])
       return value
     }
@@ -483,7 +522,9 @@ window.__ModuleLoader__.load({
         const response = await fetch(INFO_ROUTE, { headers: { accept: 'application/json' } })
         if (!response.ok) throw new Error('HTTP ' + response.status)
         const payload = await response.json()
-        infoCache.value = payload
+        // A Host that is still starting answers `ok: false`; caching that would pin
+        // a failed state for the whole window, so only a healthy answer is kept.
+        if (payload !== null && typeof payload === 'object' && payload.ok === true) infoCache.value = payload
         return payload
       })()
       infoCache.pending = pending
@@ -504,6 +545,30 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Client services are read on use instead of declared as hard dependencies:
+     * a hard `inject` holds the whole plugin in "loading" until that service
+     * mounts, which left the switch missing for a while after the app opened.
+     * @param {object} ctx - client plugin context.
+     * @param {string} name - service key.
+     * @returns {any} the service, or undefined when this shell has none.
+     */
+    function service (ctx, name) {
+      return typeof ctx.get === 'function' ? ctx.get(name) : undefined
+    }
+
+    /**
+     * Open one Workspace's Session through the Workspace UI service.
+     * @param {object} ctx - client plugin context.
+     * @param {string | undefined} workspaceId - target Workspace, undefined to inherit.
+     * @param {{ agentPreset?: string }} options - Session choices.
+     */
+    function startSession (ctx, workspaceId, options) {
+      const ui = service(ctx, 'uiWorkspace')
+      if (ui === undefined || typeof ui.startSession !== 'function') throw new Error('workspace-ui-unavailable')
+      ui.startSession(workspaceId, options)
+    }
+
+    /**
      * Resolve the client-side id of the chat Workspace, creating the record
      * through the Client service when the Host's row has not arrived yet.
      * @param {object} ctx - client plugin context.
@@ -519,13 +584,15 @@ window.__ModuleLoader__.load({
         ? items.find(item => item !== undefined && (item.workspaceId === info.workspaceId || item.path === info.workspacePath))
         : undefined
       if (known !== undefined) return known.workspaceId
-      const created = await ctx.workspaces.create({ path: info.workspacePath })
+      const workspaces = service(ctx, 'workspaces')
+      if (workspaces === undefined) throw new Error('chat-workspace')
+      const created = await workspaces.create({ path: info.workspacePath })
       if (typeof created?.workspaceId !== 'string') return info.workspaceId
       // The create request carries only a path, so name the fresh record the way
       // the Host intends instead of leaving the directory basename in the sidebar.
       if (typeof info.workspaceTitle === 'string' && info.workspaceTitle !== '') {
         try {
-          await ctx.workspaces.rename(created.workspaceId, info.workspaceTitle)
+          await workspaces.rename(created.workspaceId, info.workspaceTitle)
         } catch {
           /* a rename failure leaves the basename, which is still usable */
         }
@@ -557,7 +624,7 @@ window.__ModuleLoader__.load({
     async function openChatSession (ctx, items) {
       const info = await loadInfo(true)
       const workspaceId = await resolveChatWorkspace(ctx, info, items)
-      ctx.uiWorkspace.startSession(workspaceId, { agentPreset: CHAT_PRESET, whenDraftExists: 'keep' })
+      startSession(ctx, workspaceId, { agentPreset: CHAT_PRESET, whenDraftExists: 'keep' })
     }
 
     /**
@@ -613,7 +680,7 @@ window.__ModuleLoader__.load({
               await openChatSession(ctx, items)
             } else {
               const target = pickCodeWorkspace(items, info?.workspaceId)
-              ctx.uiWorkspace.startSession(target, { whenDraftExists: 'keep' })
+              startSession(ctx, target, { whenDraftExists: 'keep' })
             }
             modeStore.choose(next)
           } catch (failure) {
@@ -720,7 +787,8 @@ window.__ModuleLoader__.load({
         // hover card can show the real search result for a cited URL.
         React.useEffect(() => {
           if (key === undefined) return undefined
-          const binding = typeof ctx.sessions?.binding === 'function' ? ctx.sessions.binding(key) : undefined
+          const sessions = service(ctx, 'sessions')
+          const binding = sessions === undefined || typeof sessions.binding !== 'function' ? undefined : sessions.binding(key)
           if (binding === undefined || binding === null) return undefined
           const source = binding.eventSource
           const read = () => { indexSources(source.getSnapshot()) }
@@ -809,7 +877,10 @@ window.__ModuleLoader__.load({
         const hide = (selector) => { rules.push(selector + '{display:none !important}') }
         const sessionRow = (id) => `[data-row-key="session:${id}"]`
 
-        if (mode === 'chat') {
+        if (mode === 'chat' && chatWorkspaceId === undefined) {
+          // The Host has not reported the chat Workspace yet (fresh start); leave the
+          // sidebar alone rather than hiding every row.
+        } else if (mode === 'chat') {
           hide('[data-row-key^="workspace:"]')
           hide('[data-row-key^="overflow:"]')
           // The section header keeps its shape but names the list and offers a new
@@ -1129,7 +1200,7 @@ window.__ModuleLoader__.load({
     return {
       // `workspaces` creates the chat Workspace record when the Host row has
       // not reached this browser yet; `uiWorkspace` opens the Sessions.
-      inject: ['slots', 'locale', 'uiWorkspace', 'workspaces', 'sessions'],
+      inject: ['slots', 'locale'],
       apply (ctx) {
         ctx.effect(() => ctx.locale.register('dsh-plugin-chat', { en, zh }), 'dsh-plugin-chat: dictionaries')
 
