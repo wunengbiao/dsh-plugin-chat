@@ -10,6 +10,7 @@ First release.
 - A provisioned chat Workspace (`~/DSH-Chat`, name 对话) so a chat never asks for a directory.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
+- Citation numbers continue across turns of one conversation (each turn's list is shifted with <ol start>), and an answer that cites an earlier turn's search now resolves against that turn's list instead of failing to render.
 - Citations render even when the answer streams them before the source list exists (nodes are no longer marked processed too early), and chips are 16px with 3px gaps plus auto-shrunk digits so adjacent or multi-digit citations cannot collide.
 - Citations the model wrote as bare `[n]` are repaired into chips using the answer's own numbered source list (code blocks, links and list-less text are untouched).
 - Chat mode now expands the workspace list (the host caps it behind an "expand the rest" button, so only five conversations were visible).
