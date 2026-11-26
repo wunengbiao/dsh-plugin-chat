@@ -885,9 +885,9 @@ window.__ModuleLoader__.load({
      * ordinary link carrying a glyph and the literal `[1]`. Only a class and a
      * data attribute are written here — the link keeps its href and its click
      * behavior — so a streamed re-render simply gets stamped again.
-     * @param {Array<object>} lists - numbered source lists in the transcript.
+     * @param {Array<object>} entries - cited sources in document order.
      */
-    function stampCitations (lists) {
+    function stampCitations (entries) {
       if (typeof document === 'undefined') return
       for (const anchor of document.querySelectorAll('a[href]')) {
         if (anchor.classList.contains('dpc-cite')) continue
@@ -898,16 +898,12 @@ window.__ModuleLoader__.load({
         if (shaped === undefined) continue
         if (!CITATION_TEXT.test(text) && anchor.closest('p,li,td,th,dd,blockquote,h1,h2,h3,h4,h5,h6') === null) continue
         const number = Number(shaped)
-        const resolved = resolveCitation(anchor, lists, anchor.parentElement, number)
-        const display = resolved === undefined ? number : resolved.entry.base + resolved.index + 1
-        anchor.dataset.dpcCite = String(display)
-        if (String(display).length > 1) anchor.dataset.dpcWide = String(String(display).length)
-        if (resolved !== undefined && resolved.index >= 0) {
-          const target = resolved.entry.links[resolved.index]
-          if (target !== undefined) {
-            anchor.dataset.dpcUrl = target.getAttribute('href') ?? ''
-            anchor.dataset.dpcTitle = (target.textContent || '').trim()
-          }
+        const resolved = resolveCitation(anchor, entries, number)
+        anchor.dataset.dpcCite = String(number)
+        if (String(number).length > 1) anchor.dataset.dpcWide = String(String(number).length)
+        if (resolved !== undefined) {
+          anchor.dataset.dpcUrl = resolved.href
+          anchor.dataset.dpcTitle = resolved.title
         }
         anchor.classList.add('dpc-cite')
       }
@@ -919,72 +915,88 @@ window.__ModuleLoader__.load({
     const bareSkip = new WeakSet()
 
     /**
-     * Numbered source lists in the transcript.
+     * Sources the answer cites, in document order, each carrying the number the model
+     * gave it.
      *
-     * Every turn that searches ends with a list of links, and the list carries the
-     * number the model gave its first entry: a model that keeps counting writes
-     * `13. …`, which the host renders as `<ol start="13">`. `base` is that offset, so
-     * nothing is renumbered here and the prose and the list always agree.
-     * @returns {Array<{ element: Element, items: Element[], links: Element[], base: number }>} lists.
+     * Two layouts occur: an ordered list (`<ol start="13">` …) and the paragraph form
+     * the prompt asks for, `[1] [title](url)` on its own line. Both are read in one
+     * document-order pass, so the prose number always points at the source it meant.
+     * @returns {Array<{ index: number, href: string, title: string, element: Element }>} entries.
      */
-    function sourceLists () {
-      const lists = []
-      for (const element of document.querySelectorAll('ol,ul')) {
-        if (element.closest('.dpc-mode') !== null) continue
-        const items = [...element.children].filter(child => child.tagName === 'LI')
-        if (items.length < 2) continue
-        const links = []
-        let usable = true
-        for (const item of items) {
-          const link = item.querySelector(':scope > a[href]')
-          if (link === null) { usable = false; break }
-          const label = (link.textContent || '').trim()
-          if (label === '' || label.startsWith('[')) { usable = false; break }
-          links.push(link)
-        }
-        if (!usable) continue
-        // The list carries its own first number: a model that keeps counting across
-        // turns writes `13. …` and the host renders `<ol start="13">`. The list is
-        // never renumbered here, so the prose and the list always agree.
-        const start = Number(element.getAttribute('start') ?? 1)
-        const base = Number.isFinite(start) && start > 0 ? start - 1 : 0
-        lists.push({ element, items, links, base })
+    function sourceEntries () {
+      const entries = []
+      for (const link of document.querySelectorAll('a[href]')) {
+        if (link.classList.contains('dpc-cite')) continue
+        if (link.closest('.dpc-mode') !== null) continue
+        const title = (link.textContent || '').trim()
+        if (title === '' || title.startsWith('[')) continue
+        let index = markerBefore(link)
+        if (index === undefined) index = listIndexOf(link)
+        if (index === undefined) continue
+        entries.push({ index, href: link.getAttribute('href') ?? '', title, element: link })
       }
-      return lists
+      return entries
     }
 
     /**
-     * Resolve which source list a citation belongs to.
-     * @param {Node} node - the citation (link or text node).
-     * @param {Array<object>} lists - numbered source lists.
-     * @param {Element | null} start - element around the citation.
-     * @returns {object | undefined} the list, when one applies.
+     * The number an ordered list gives one of its links.
+     * @param {Element} link - a link inside the list.
+     * @returns {number | undefined} the number, when the link is a list entry.
      */
-    function resolveCitation (node, lists, start, absolute) {
-      // Candidate lists in preference order: the ones in this message that follow the
-      // sentence, then earlier ones (nearest first).
-      const own = []
-      let ancestor = start
-      for (let depth = 0; depth < 16 && ancestor !== null && ancestor !== document.body; depth += 1) {
-        for (const entry of lists) {
-          if (!ancestor.contains(entry.element)) continue
-          if ((node.compareDocumentPosition(entry.element) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) continue
-          own.push(entry)
+    function listIndexOf (link) {
+      const item = link.closest('li')
+      const list = item === null ? null : item.parentElement
+      if (item === null || list === null || list.tagName !== 'OL') return undefined
+      const items = [...list.children].filter(child => child.tagName === 'LI')
+      if (items.length < 2) return undefined
+      const position = items.indexOf(item)
+      if (position < 0) return undefined
+      if (item.querySelector(':scope > a[href]') !== link) return undefined
+      const start = Number(list.getAttribute('start') ?? 1)
+      const base = Number.isFinite(start) && start > 0 ? start - 1 : 0
+      return base + position + 1
+    }
+
+    /**
+     * Read the `[1]` / `1.` marker that precedes one link.
+     * @param {Element} link - the source link.
+     * @returns {number | undefined} the marker number, when present.
+     */
+    function markerBefore (link) {
+      let node = link.previousSibling
+      for (let step = 0; step < 4 && node !== null; step += 1) {
+        if (node.nodeType === 3) {
+          const text = String(node.nodeValue || '')
+          const match = /\[?(\d{1,3})\]?\s*[.、,:：]?\s*$/.exec(text)
+          if (match !== null) return Number(match[1])
+          if (text.trim() !== '') return undefined
+          node = node.previousSibling
+          continue
         }
-        ancestor = ancestor.parentElement
+        if (node.nodeType !== 1) { node = node.previousSibling; continue }
+        const text = String(node.textContent || '')
+        if (text.trim() === '') { node = node.previousSibling; continue }
+        const match = /\[?(\d{1,3})\]?\s*[.、,:：]?\s*$/.exec(text)
+        return match === null ? undefined : Number(match[1])
       }
-      const earlier = []
-      for (const entry of lists) {
-        if ((entry.element.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) continue
-        earlier.push(entry)
+      return undefined
+    }
+
+    /**
+     * Find the source with one exact number.
+     * @param {Node} node - the citation (link or text node).
+     * @param {Array<object>} entries - sources in document order.
+     * @param {number} absolute - the number the answer used.
+     * @returns {{ href: string, title: string } | undefined} the source.
+     */
+    function resolveCitation (node, entries, absolute) {
+      let preceding
+      for (const entry of entries) {
+        if (entry.index !== absolute) continue
+        if ((node.compareDocumentPosition(entry.element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0) return entry
+        preceding = entry
       }
-      const candidates = own.concat(earlier.reverse())
-      for (const entry of candidates) {
-        if (absolute > entry.base && absolute <= entry.base + entry.items.length) {
-          return { entry, index: absolute - entry.base - 1 }
-        }
-      }
-      return candidates.length === 0 ? undefined : { entry: candidates[0], index: absolute - candidates[0].base - 1 }
+      return preceding
     }
 
     /**
@@ -993,8 +1005,8 @@ window.__ModuleLoader__.load({
      */
     function stampBareCitations (known) {
       if (typeof document === 'undefined' || typeof NodeFilter === 'undefined') return
-      const lists = known === undefined ? sourceLists() : known
-      if (lists.length === 0) return
+      const entries = known === undefined ? sourceEntries() : known
+      if (entries.length === 0) return
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null)
       let budget = 8000
       let node = walker.nextNode()
@@ -1013,28 +1025,25 @@ window.__ModuleLoader__.load({
         // Without any source list there is nothing to point at, and rewriting arbitrary
         // text would put chips in places like the sidebar's titles. Deliberately not
         // marked: during streaming the list is written after the prose.
-        if (lists.length === 0) continue
+        if (entries.length === 0) continue
         const fragment = document.createDocumentFragment()
         let cursor = 0
         let match = pattern.exec(value)
         while (match !== null) {
           fragment.appendChild(document.createTextNode(value.slice(cursor, match.index)))
           const number = Number(match[1])
-          const resolved = resolveCitation(current, lists, parent, number)
-          const link = resolved === undefined || resolved.index < 0 ? undefined : resolved.entry.links[resolved.index]
+          const resolved = resolveCitation(current, entries, number)
           const display = number
           const chip = document.createElement('a')
           chip.className = 'dpc-cite dpc-cite-bare'
           chip.dataset.dpcCite = String(display)
           if (String(display).length > 1) chip.dataset.dpcWide = String(String(display).length)
-          if (link === undefined) {
+          if (resolved === undefined) {
             chip.dataset.dpcBare = 'true'
           } else {
-            const href = link.getAttribute('href') ?? ''
-            const title = (link.textContent || '').trim()
-            chip.setAttribute('href', href)
-            chip.dataset.dpcUrl = href
-            if (title !== '') chip.dataset.dpcTitle = title
+            chip.setAttribute('href', resolved.href)
+            chip.dataset.dpcUrl = resolved.href
+            if (resolved.title !== '') chip.dataset.dpcTitle = resolved.title
           }
           fragment.appendChild(chip)
           cursor = match.index + match[0].length
@@ -1144,19 +1153,22 @@ window.__ModuleLoader__.load({
             if (timer !== 0) window.clearTimeout(timer)
             timer = window.setTimeout(() => {
               timer = 0
-              const lists = sourceLists()
-              stampCitations(lists)
-              stampBareCitations(lists)
+              const entries = sourceEntries()
+              stampCitations(entries)
+              stampBareCitations(entries)
             }, 400)
             if (frame !== 0) return
             frame = requestAnimationFrame(() => {
               frame = 0
-              stampCitations(sourceLists())
+              stampCitations(sourceEntries())
             })
           }
           const observer = new MutationObserver(schedule)
           observer.observe(document.body, { childList: true, subtree: true })
-          stampCitations(sourceLists())
+          stampCitations(sourceEntries())
+          // A transcript that mounts without further mutations (opening an old
+          // conversation) still needs one bare-citation pass.
+          schedule()
           return () => {
             observer.disconnect()
             if (frame !== 0) cancelAnimationFrame(frame)
