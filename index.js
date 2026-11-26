@@ -50,8 +50,108 @@ const CONTEXT_ORDER = 1000
 const SETTINGS_FILE = 'dsh-plugin-chat.json'
 const SETTINGS_VERSION = 1
 
+/** Plugin-owned citation ledger: which numbers a conversation already handed out. */
+const LEDGER_FILE = 'dsh-plugin-chat-citations.json'
+const LEDGER_VERSION = 1
+/** Sources kept per conversation; older ones stay numbered in the transcript only. */
+const LEDGER_LIMIT = 400
+/** Tool the chat Agent calls to reserve the next citation numbers. */
+const CITATION_TOOL = 'citation_index'
+
 /** Largest accepted prompt, in characters. */
 const MAX_PROMPT_CHARS = 20000
+
+
+/**
+ * Path of the citation ledger beside the settings file.
+ * @returns {string} absolute file path.
+ */
+function ledgerPath () {
+  return join(dirname(settingsPath()), LEDGER_FILE)
+}
+
+/**
+ * Read the whole ledger, tolerating a missing or damaged file.
+ * @returns {Promise<{ version: number, sessions: Record<string, { next: number, sources: object[] }> }>} ledger.
+ */
+async function readLedger () {
+  let raw
+  try {
+    raw = await readFile(ledgerPath(), 'utf8')
+  } catch {
+    return { version: LEDGER_VERSION, sessions: {} }
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    const sessions = parsed !== null && typeof parsed === 'object' && parsed.sessions !== null && typeof parsed.sessions === 'object'
+      ? parsed.sessions
+      : {}
+    return { version: LEDGER_VERSION, sessions }
+  } catch {
+    return { version: LEDGER_VERSION, sessions: {} }
+  }
+}
+
+/** Write the whole ledger atomically, readable by the owner only. */
+let ledgerWrite = Promise.resolve()
+/**
+ * Persist the ledger without overlapping writes.
+ * @param {object} ledger - the in-memory ledger.
+ * @returns {Promise<void>} completion of this write.
+ */
+function saveLedger (ledger) {
+  const file = ledgerPath()
+  const body = JSON.stringify(ledger, null, 2) + '\n'
+  ledgerWrite = ledgerWrite.then(async () => {
+    await mkdir(dirname(file), { recursive: true })
+    const temporary = file + '.tmp-' + process.pid
+    await writeFile(temporary, body, { mode: 0o600 })
+    await rename(temporary, file)
+  }).catch(() => {})
+  return ledgerWrite
+}
+
+/**
+ * One conversation's ledger, created on first use.
+ * @param {{ sessions: Record<string, { next: number, sources: object[] }> }} ledger - whole ledger.
+ * @param {string} sessionId - conversation id.
+ * @returns {{ next: number, sources: object[] }} the conversation entry.
+ */
+function sessionEntry (ledger, sessionId) {
+  let entry = ledger.sessions[sessionId]
+  if (entry === undefined || entry === null || typeof entry !== 'object') {
+    entry = { next: 1, sources: [] }
+    ledger.sessions[sessionId] = entry
+  }
+  if (!Number.isFinite(entry.next) || entry.next < 1) entry.next = 1
+  if (!Array.isArray(entry.sources)) entry.sources = []
+  return entry
+}
+
+/**
+ * Reserve numbers for new sources and record them.
+ * @param {{ sessions: Record<string, { next: number, sources: object[] }> }} ledger - whole ledger.
+ * @param {string} sessionId - conversation id.
+ * @param {Array<{ title?: string, url?: string }>} sources - new sources in reading order.
+ * @returns {Array<{ index: number, title: string, url: string }>} assigned numbers.
+ */
+function reserveCitations (ledger, sessionId, sources) {
+  const entry = sessionEntry(ledger, sessionId)
+  const assigned = []
+  for (const source of sources) {
+    const url = typeof source.url === 'string' ? source.url.trim() : ''
+    if (url === '') continue
+    const title = typeof source.title === 'string' && source.title.trim() !== '' ? source.title.trim() : url
+    const index = entry.next
+    entry.next += 1
+    assigned.push({ index, title, url })
+  }
+  if (assigned.length > 0) {
+    entry.sources.push(...assigned)
+    if (entry.sources.length > LEDGER_LIMIT) entry.sources.splice(0, entry.sources.length - LEDGER_LIMIT)
+  }
+  return assigned
+}
 
 const DEFAULT_TITLE = '对话'
 
@@ -61,7 +161,7 @@ const DEFAULT_PROMPT = [
   '- 用简体中文、自然、简洁地回答；先给结论，再补必要的细节。',
   '- 需要事实、版本、价格、新闻或外部链接时，用 web_search 检索、用 web_fetch 打开页面核实。',
   '- 引用来源时用带方括号编号的 Markdown 链接：正文写成 [[1]](https://…) 这种形式（不要只写 [1]，也不要留裸链接），按首次引用顺序编号。',
-  '- 编号在整个对话里连续：不因新一轮提问回到 1。每次新的检索结果接着本对话已用过的最大编号往下排（上一轮用到 12，本轮新来源就从 13 开始），文末「来源」列表也用同一套编号（写成 13. 14. …），正文与列表必须对得上。',
+  '- 编号在整个对话里连续：不因新一轮提问回到 1。检索到新来源后先调用 citation_index 工具登记（action=reserve，按顺序附上 title 与 url），正文和文末「来源」列表都用它返回的编号；只复用已有来源时沿用原编号。',
   '- 回答末尾加一个「来源」小节，逐条写「编号. [文章标题](链接)」；链接文字一律用文章标题，不要直接贴 URL。',
   '- 你没有文件、shell、编辑或子代理工具，也不要假装执行过它们；如果用户确实要改代码，提醒他切换到「写代码」模式。',
   '- 不确定就说不确定，不要编造来源或数字。',
@@ -78,6 +178,8 @@ const DEFAULT_PROMPT = [
  *   prompt: string,
  *   defaultPrompt: string,
  *   promptPath: string,
+ *   ledger: { version: number, sessions: Record<string, { next: number, sources: object[] }> },
+ *   toolError: string,
  *   storageReason: string,
  * }}
  */
@@ -88,6 +190,8 @@ const state = {
   prompt: DEFAULT_PROMPT,
   defaultPrompt: DEFAULT_PROMPT,
   promptPath: '',
+  ledger: { version: LEDGER_VERSION, sessions: {} },
+  toolError: '',
   storageReason: 'pending',
 }
 
@@ -297,13 +401,111 @@ function highestCitation (ctx, sessionId) {
  * @returns {string} the context text for this step.
  */
 function citationContext (ctx, sessionId) {
-  const highest = highestCitation(ctx, sessionId)
-  if (highest === 0) {
-    return '引用编号：本对话还没有用过引用编号，本轮检索到来源时从 1 开始，文末来源列表使用同一套编号。'
+  const entry = sessionEntry(state.ledger, sessionId)
+  const scanned = highestCitation(ctx, sessionId)
+  const next = Math.max(entry.next, scanned + 1)
+  return '引用编号：本对话下一个可用编号是 ' + next + '。本轮检索到新来源后，先调用 ' + CITATION_TOOL
+    + '（action=reserve，按顺序附上 title 与 url）登记，正文和文末来源列表都用它返回的编号；'
+    + '只是复用已有来源时沿用原编号，绝对不要从 1 重新开始。'
+}
+
+
+/**
+ * Render a ledger answer for the model.
+ * @param {unknown} value - the tool's return value.
+ * @returns {string} readable lines.
+ */
+function renderLedgerAnswer (value) {
+  const payload = value !== null && typeof value === 'object' ? value : {}
+  const assigned = Array.isArray(payload.assigned) ? payload.assigned : []
+  const lines = []
+  if (assigned.length > 0) {
+    lines.push('本次登记的引用编号：')
+    for (const item of assigned) lines.push('[' + item.index + '] ' + item.title + ' — ' + item.url)
+  } else {
+    lines.push('本次没有登记新来源。')
   }
-  return '引用编号：本对话已经用到编号 ' + highest + '。本轮如果检索到新来源，请从 ' + (highest + 1)
-    + ' 开始编号（' + (highest + 1) + '、' + (highest + 2) + '…），文末来源列表沿用同一套编号；'
-    + '只是复用已有来源时沿用原编号，不要从 1 重新开始。'
+  lines.push('下一个可用编号：' + payload.next)
+  return lines.join('\n')
+}
+
+/**
+ * The chat Agent's citation ledger tool.
+ *
+ * It is the authority for numbering: the model reserves the next numbers before it
+ * writes a citation, the plugin stores them per conversation, and the per-step
+ * runtime context repeats the next number so a new turn never restarts at 1.
+ * @param {object} ctx - plugin context used to read the transcript.
+ * @param {string} sessionId - conversation id.
+ * @returns {object} a ToolDefinition.
+ */
+function citationTool (ctx, sessionId) {
+  return {
+    name: CITATION_TOOL,
+    description: '引用编号登记。检索到新的来源后，先调用本工具（action=reserve，按引用顺序附上来源的 title 与 url），'
+      + '拿到它会话内唯一的编号，再在正文里用这些编号、并在文末来源列表写同样的编号。'
+      + '只引用已有来源时不要登记，沿用原编号即可。action=state 可查看当前下一个可用编号。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['reserve', 'state'],
+          description: 'reserve 登记新来源并取得编号；state 只查看当前状态。',
+        },
+        sources: {
+          type: 'array',
+          description: 'reserve 时必填：本轮新检索到的来源，按引用顺序排列。',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: '文章标题。' },
+              url: { type: 'string', description: '文章链接。' },
+            },
+            required: ['url'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          next: { type: 'number' },
+          count: { type: 'number' },
+          assigned: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                index: { type: 'number' },
+                title: { type: 'string' },
+                url: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      render: (args, value) => [{ type: 'text', text: renderLedgerAnswer(value) }],
+    },
+    async execute (args) {
+      const input = args !== null && typeof args === 'object' ? args : {}
+      const entry = sessionEntry(state.ledger, sessionId)
+      // Never hand out a number the transcript already used.
+      const scanned = highestCitation(ctx, sessionId)
+      if (entry.next <= scanned) entry.next = scanned + 1
+      if (input.action === 'state') {
+        return { next: entry.next, count: entry.sources.length, assigned: [] }
+      }
+      const sources = Array.isArray(input.sources) ? input.sources : []
+      const assigned = reserveCitations(state.ledger, sessionId, sources)
+      if (assigned.length > 0) await saveLedger(state.ledger)
+      return { next: entry.next, count: assigned.length, assigned }
+    },
+  }
 }
 
 function attach (ctx, agent) {
@@ -334,6 +536,18 @@ function attach (ctx, agent) {
         releaseCitations = () => {}
       }
     }
+    // The numbering authority: the model reserves numbers through this tool.
+    let releaseCitationTool = () => {}
+    const tools = agentCtx.get('tools')
+    if (tools !== undefined && typeof tools.register === 'function') {
+      try {
+        releaseCitationTool = tools.register(citationTool(ctx, String(agent.id)))
+      } catch (error) {
+        /* a registry that refuses the tool must not break chat mode */
+        state.toolError = messageOf(error)
+        releaseCitationTool = () => {}
+      }
+    }
     let releaseTools = () => {}
     if (denied.length > 0 && agentCtx.get('tools') !== undefined) {
       try {
@@ -346,6 +560,11 @@ function attach (ctx, agent) {
     return () => {
       try {
         releaseTools()
+      } catch {
+        /* the scope may already be gone */
+      }
+      try {
+        releaseCitationTool()
       } catch {
         /* the scope may already be gone */
       }
@@ -391,6 +610,7 @@ function handleInfo (request, response) {
     maxPromptChars: MAX_PROMPT_CHARS,
     storage: state.storageReason,
     storagePath: state.promptPath,
+    citationToolError: state.toolError,
   })
 }
 
@@ -517,6 +737,7 @@ export async function apply (ctx, config) {
   state.workspaceTitle = settings.workspaceTitle
 
   state.promptPath = settingsPath()
+  state.ledger = await readLedger()
   const stored = await readStoredPrompt(state.promptPath)
   state.storageReason = stored.reason
   state.prompt = stored.prompt ?? settings.systemPrompt
