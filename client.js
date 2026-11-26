@@ -867,9 +867,11 @@ window.__ModuleLoader__.load({
 
     /** Styles for a stamped citation marker, matching the web chat's raised index. */
     const CITATION_CSS = [
-      '.dpc-cite{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:15px;height:15px;margin:0 2px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:1;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
+      '.dpc-cite{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:16px;height:16px;margin:0 3px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:1;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
       '.dpc-cite>svg{display:none !important}',
       '.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:9px;font-weight:600;letter-spacing:0;line-height:1;text-align:center}',
+      '.dpc-cite[data-dpc-wide="2"]::after{font-size:8px;letter-spacing:-.3px}',
+      '.dpc-cite[data-dpc-wide="3"]::after{font-size:7px;letter-spacing:-.4px}',
       '.dpc-cite[data-dpc-bare="true"]{cursor:default;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-tertiary)}',
       '@media (hover:hover){.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
     ]
@@ -889,6 +891,7 @@ window.__ModuleLoader__.load({
         const text = (anchor.textContent || '').trim()
         if (!CITATION_TEXT.test(text)) continue
         anchor.dataset.dpcCite = text.slice(1, -1)
+        if (anchor.dataset.dpcCite.length > 1) anchor.dataset.dpcWide = String(anchor.dataset.dpcCite.length)
         anchor.classList.add('dpc-cite')
       }
     }
@@ -954,8 +957,10 @@ window.__ModuleLoader__.load({
         pattern.lastIndex = 0
         const sources = sourcesFor(current, parent)
         // Without a numbered source list there is nothing to point at, and rewriting
-        // arbitrary text would put chips in places like the sidebar's titles.
-        if (sources === undefined) { bareDone.add(current); continue }
+        // arbitrary text would put chips in places like the sidebar's titles. The node
+        // is deliberately NOT marked done: during streaming the list is written after
+        // the prose, so an early pass must be able to convert it later.
+        if (sources === undefined) continue
         const fragment = document.createDocumentFragment()
         let cursor = 0
         let match = pattern.exec(value)
@@ -966,6 +971,7 @@ window.__ModuleLoader__.load({
           const chip = document.createElement('a')
           chip.className = 'dpc-cite dpc-cite-bare'
           chip.dataset.dpcCite = String(number)
+          if (String(number).length > 1) chip.dataset.dpcWide = String(String(number).length)
           if (source === undefined) {
             chip.dataset.dpcBare = 'true'
           } else {
