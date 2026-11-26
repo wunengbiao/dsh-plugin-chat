@@ -43,6 +43,8 @@ const CONVERSATIONAL_TOOLS = ['web_search', 'web_fetch', 'ask_user_question']
 /** Prompt section registered for each chat Agent, after the persona prefix. */
 const SECTION_NAME = 'chat-mode:instructions'
 const SECTION_ORDER = 40
+const CONTEXT_NAME = 'chat-mode:citations'
+const CONTEXT_ORDER = 1000
 
 /** Plugin-owned settings file under the DSH home, holding the saved prompt. */
 const SETTINGS_FILE = 'dsh-plugin-chat.json'
@@ -248,6 +250,62 @@ function conversationalDenyList (ctx) {
  * @param {import('@deepseek-ai/cordis').Context} ctx - plugin context.
  * @param {object} agent - live agent.
  */
+
+/** How many trailing session events the citation ledger reads. */
+const CITATION_SCAN_EVENTS = 400
+
+/**
+ * Highest citation number this conversation has already used.
+ *
+ * The model restarts its numbering unless it is reminded, so every step gets the
+ * ledger as a runtime-context line instead of trusting the model to count the
+ * transcript itself.
+ * @param {object} ctx - plugin context with access to `sessions`.
+ * @param {string} sessionId - session to scan.
+ * @returns {number} the highest number in the recent transcript, 0 when none.
+ */
+function highestCitation (ctx, sessionId) {
+  const sessions = ctx.get('sessions')
+  if (sessions === undefined || typeof sessions.get !== 'function') return 0
+  const session = sessions.get(sessionId)
+  if (session === undefined || session === null) return 0
+  let highest = 0
+  try {
+    const from = Math.max(0, Number(session.seq) - CITATION_SCAN_EVENTS)
+    for (const event of session.snapshotEvents(from)) {
+      if (event.type !== 'assistant/message') continue
+      const message = event.data === undefined ? undefined : event.data.message
+      const blocks = message === undefined || !Array.isArray(message.content) ? [] : message.content
+      for (const block of blocks) {
+        if (block === null || typeof block !== 'object' || block.type !== 'text' || typeof block.text !== 'string') continue
+        for (const match of block.text.matchAll(/\[(\d{1,3})\]/g)) {
+          const value = Number(match[1])
+          if (value > highest) highest = value
+        }
+      }
+    }
+  } catch {
+    /* a session that cannot be read contributes no ledger */
+  }
+  return highest
+}
+
+/**
+ * The runtime-context line that keeps citation numbering continuous.
+ * @param {object} ctx - plugin context with access to `sessions`.
+ * @param {string} sessionId - session whose transcript is measured.
+ * @returns {string} the context text for this step.
+ */
+function citationContext (ctx, sessionId) {
+  const highest = highestCitation(ctx, sessionId)
+  if (highest === 0) {
+    return '引用编号：本对话还没有用过引用编号，本轮检索到来源时从 1 开始，文末来源列表使用同一套编号。'
+  }
+  return '引用编号：本对话已经用到编号 ' + highest + '。本轮如果检索到新来源，请从 ' + (highest + 1)
+    + ' 开始编号（' + (highest + 1) + '、' + (highest + 2) + '…），文末来源列表沿用同一套编号；'
+    + '只是复用已有来源时沿用原编号，不要从 1 重新开始。'
+}
+
 function attach (ctx, agent) {
   const key = String(agent.id)
   if (sections.has(key)) return
@@ -262,6 +320,20 @@ function attach (ctx, agent) {
       order: SECTION_ORDER,
       text: () => state.prompt,
     })
+    // Runtime context, re-evaluated every step: the running citation number.
+    let releaseCitations = () => {}
+    if (typeof prompt.context === 'function') {
+      try {
+        releaseCitations = prompt.context({
+          name: CONTEXT_NAME,
+          order: CONTEXT_ORDER,
+          text: () => citationContext(ctx, String(agent.id)),
+        })
+      } catch {
+        /* a registry that refuses the contribution must not break chat mode */
+        releaseCitations = () => {}
+      }
+    }
     let releaseTools = () => {}
     if (denied.length > 0 && agentCtx.get('tools') !== undefined) {
       try {
@@ -274,6 +346,11 @@ function attach (ctx, agent) {
     return () => {
       try {
         releaseTools()
+      } catch {
+        /* the scope may already be gone */
+      }
+      try {
+        releaseCitations()
       } catch {
         /* the scope may already be gone */
       }

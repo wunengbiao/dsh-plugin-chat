@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- Citation numbering is now injected as a per-step runtime context (`chat-mode:citations`): the plugin scans the session for the highest citation number used so far and tells the model to continue from there, like the built-in time-context injection.
 - Citation numbering across turns is driven by the model now: the system prompt requires one continuous numbering per conversation, and the renderer resolves each number against the list whose own start number contains it (no silent renumbering, so a virtualized transcript cannot reset it).
 - Two-digit citation chips no longer wrap onto two lines inside the circle: the chip is a min-width 16px pill with nowrap, so it widens instead.
 - Two-digit citation chips no longer collide with the preceding character: superscript-style citation links (label `12` rather than `[12]`) are stamped too, and the chip wins over the host's inline styles with a bordered 16px circle that stays visible on a white surface.
