@@ -1054,6 +1054,64 @@ window.__ModuleLoader__.load({
       }
     }
 
+
+    /**
+     * Keep a source run on separate lines.
+     *
+     * Answers sometimes write the citation list as one paragraph (`[10] [title](url)
+     * [11] …`), which markdown renders as a single flowing block. A paragraph that
+     * *starts* with a number marker and holds at least two marker+link pairs is that
+     * list, so a line break is inserted before every entry after the first. Inline
+     * citations inside prose never start a paragraph, so they are left alone.
+     */
+    function normalizeSourceRuns () {
+      if (typeof document === 'undefined') return
+      for (const block of document.querySelectorAll('p,li,blockquote,div')) {
+        if (block.hasAttribute('data-dpc-source-run')) continue
+        if (block.closest('.dpc-mode') !== null) continue
+        const text = (block.textContent || '').trim()
+        // `[10] title` and `10. title` both start a source run; plain prose numbers
+        // ("2026 年…") do not, because the bracket or the punctuation is required.
+        if (!/^(\[\d{1,3}\]|\d{1,3}[.、,:：])/.test(text)) continue
+        const links = [...block.querySelectorAll('a[href]')]
+          .filter(link => !link.classList.contains('dpc-cite') && markerBefore(link) !== undefined)
+        if (links.length < 2) continue
+        block.setAttribute('data-dpc-source-run', 'true')
+        for (const link of links.slice(1)) breakBeforeMarker(link)
+      }
+    }
+
+    /**
+     * Insert one line break in front of a link's `[n]` marker.
+     * @param {Element} link - the source link.
+     */
+    function breakBeforeMarker (link) {
+      let node = link.previousSibling
+      for (let step = 0; step < 3 && node !== null; step += 1) {
+        if (node.nodeType === 3) {
+          const text = String(node.nodeValue || '')
+          const match = /\[?\d{1,3}\]?\s*[.、,:：]?\s*$/.exec(text)
+          if (match !== null) {
+            const start = match.index
+            const parent = node.parentNode
+            if (parent === null) return
+            const br = document.createElement('br')
+            if (start === 0) {
+              parent.insertBefore(br, node)
+              return
+            }
+            const tail = node.splitText(start)
+            parent.insertBefore(br, tail)
+            return
+          }
+          if (text.trim() !== '') return
+          node = node.previousSibling
+          continue
+        }
+        return
+      }
+    }
+
     /**
      * Narrow the sidebar to the active mode.
      *
@@ -1153,6 +1211,9 @@ window.__ModuleLoader__.load({
             if (timer !== 0) window.clearTimeout(timer)
             timer = window.setTimeout(() => {
               timer = 0
+              // Normalise first: the bare pass replaces the `[n]` markers with chips,
+              // after which the run can no longer be recognised.
+              normalizeSourceRuns()
               const entries = sourceEntries()
               stampCitations(entries)
               stampBareCitations(entries)
@@ -1165,6 +1226,7 @@ window.__ModuleLoader__.load({
           }
           const observer = new MutationObserver(schedule)
           observer.observe(document.body, { childList: true, subtree: true })
+          normalizeSourceRuns()
           stampCitations(sourceEntries())
           // A transcript that mounts without further mutations (opening an old
           // conversation) still needs one bare-citation pass.

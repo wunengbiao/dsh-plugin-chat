@@ -420,11 +420,11 @@ function renderLedgerAnswer (value) {
   const assigned = Array.isArray(payload.assigned) ? payload.assigned : []
   const lines = []
   if (assigned.length > 0) {
-    lines.push('本次登记的引用编号：')
-    for (const item of assigned) lines.push('[' + item.index + '] ' + item.title + ' — ' + item.url)
+    for (const item of assigned) lines.push('- [' + item.index + '] ' + item.title + ' — ' + item.url)
   } else {
-    lines.push('本次没有登记新来源。')
+    lines.push('（还没有登记过来源）')
   }
+  lines.push('')
   lines.push('下一个可用编号：' + payload.next)
   return lines.join('\n')
 }
@@ -450,8 +450,8 @@ function citationTool (ctx, sessionId) {
       properties: {
         action: {
           type: 'string',
-          enum: ['reserve', 'state'],
-          description: 'reserve 登记新来源并取得编号；state 只查看当前状态。',
+          enum: ['reserve', 'state', 'list'],
+          description: 'reserve 登记新来源并取得编号；state 只查看当前状态；list 返回可直接粘贴的规范化来源列表。',
         },
         sources: {
           type: 'array',
@@ -499,6 +499,12 @@ function citationTool (ctx, sessionId) {
       if (entry.next <= scanned) entry.next = scanned + 1
       if (input.action === 'state') {
         return { next: entry.next, count: entry.sources.length, assigned: [] }
+      }
+      if (input.action === 'list') {
+        // A ready-to-paste list: one bullet per source, so the answer never renders the
+        // whole list as one flowing paragraph.
+        const listed = entry.sources.slice(-40)
+        return { next: entry.next, count: listed.length, assigned: listed }
       }
       const sources = Array.isArray(input.sources) ? input.sources : []
       const assigned = reserveCitations(state.ledger, sessionId, sources)
