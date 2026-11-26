@@ -898,10 +898,17 @@ window.__ModuleLoader__.load({
         if (shaped === undefined) continue
         if (!CITATION_TEXT.test(text) && anchor.closest('p,li,td,th,dd,blockquote,h1,h2,h3,h4,h5,h6') === null) continue
         const number = Number(shaped)
-        const entry = listForNode(anchor, lists, anchor.parentElement)
-        const display = entry === undefined ? number : entry.base + number
+        const resolved = resolveCitation(anchor, lists, anchor.parentElement, number)
+        const display = resolved === undefined ? number : resolved.entry.base + resolved.index + 1
         anchor.dataset.dpcCite = String(display)
         if (String(display).length > 1) anchor.dataset.dpcWide = String(String(display).length)
+        if (resolved !== undefined && resolved.index >= 0) {
+          const target = resolved.entry.links[resolved.index]
+          if (target !== undefined) {
+            anchor.dataset.dpcUrl = target.getAttribute('href') ?? ''
+            anchor.dataset.dpcTitle = (target.textContent || '').trim()
+          }
+        }
         anchor.classList.add('dpc-cite')
       }
     }
@@ -921,7 +928,6 @@ window.__ModuleLoader__.load({
      */
     function sourceLists () {
       const lists = []
-      let running = 0
       for (const element of document.querySelectorAll('ol,ul')) {
         if (element.closest('.dpc-mode') !== null) continue
         const items = [...element.children].filter(child => child.tagName === 'LI')
@@ -936,11 +942,12 @@ window.__ModuleLoader__.load({
           links.push(link)
         }
         if (!usable) continue
-        if (element.tagName === 'OL' && Number(element.getAttribute('start') ?? 1) !== running + 1) {
-          element.setAttribute('start', String(running + 1))
-        }
-        lists.push({ element, items, links, base: running })
-        running += items.length
+        // The list carries its own first number: a model that keeps counting across
+        // turns writes `13. …` and the host renders `<ol start="13">`. The list is
+        // never renumbered here, so the prose and the list always agree.
+        const start = Number(element.getAttribute('start') ?? 1)
+        const base = Number.isFinite(start) && start > 0 ? start - 1 : 0
+        lists.push({ element, items, links, base })
       }
       return lists
     }
@@ -952,25 +959,31 @@ window.__ModuleLoader__.load({
      * @param {Element | null} start - element around the citation.
      * @returns {object | undefined} the list, when one applies.
      */
-    function listForNode (node, lists, start) {
-      // A list in the same message that follows the sentence it backs.
+    function resolveCitation (node, lists, start, absolute) {
+      // Candidate lists in preference order: the ones in this message that follow the
+      // sentence, then earlier ones (nearest first).
+      const own = []
       let ancestor = start
       for (let depth = 0; depth < 16 && ancestor !== null && ancestor !== document.body; depth += 1) {
         for (const entry of lists) {
           if (!ancestor.contains(entry.element)) continue
           if ((node.compareDocumentPosition(entry.element) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) continue
-          return entry
+          own.push(entry)
         }
         ancestor = ancestor.parentElement
       }
-      // No list of its own: the answer is citing an earlier turn's search, so the
-      // nearest preceding list is the one it means.
-      let previous
+      const earlier = []
       for (const entry of lists) {
         if ((entry.element.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) continue
-        previous = entry
+        earlier.push(entry)
       }
-      return previous
+      const candidates = own.concat(earlier.reverse())
+      for (const entry of candidates) {
+        if (absolute > entry.base && absolute <= entry.base + entry.items.length) {
+          return { entry, index: absolute - entry.base - 1 }
+        }
+      }
+      return candidates.length === 0 ? undefined : { entry: candidates[0], index: absolute - candidates[0].base - 1 }
     }
 
     /**
@@ -996,19 +1009,19 @@ window.__ModuleLoader__.load({
         const pattern = /\[(\d{1,3})\]/g
         if (!pattern.test(value)) continue
         pattern.lastIndex = 0
-        const entry = listForNode(current, lists, parent)
         // Without any source list there is nothing to point at, and rewriting arbitrary
         // text would put chips in places like the sidebar's titles. Deliberately not
         // marked: during streaming the list is written after the prose.
-        if (entry === undefined) continue
+        if (lists.length === 0) continue
         const fragment = document.createDocumentFragment()
         let cursor = 0
         let match = pattern.exec(value)
         while (match !== null) {
           fragment.appendChild(document.createTextNode(value.slice(cursor, match.index)))
           const number = Number(match[1])
-          const link = entry.links[number - 1]
-          const display = entry.base + number
+          const resolved = resolveCitation(current, lists, parent, number)
+          const link = resolved === undefined || resolved.index < 0 ? undefined : resolved.entry.links[resolved.index]
+          const display = number
           const chip = document.createElement('a')
           chip.className = 'dpc-cite dpc-cite-bare'
           chip.dataset.dpcCite = String(display)
