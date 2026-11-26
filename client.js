@@ -914,6 +914,39 @@ window.__ModuleLoader__.load({
     /** Text nodes that sit in a skip element and can be ignored from now on. */
     const bareSkip = new WeakSet()
 
+
+    /**
+     * The last number marker that precedes one link inside its own block.
+     *
+     * The "`[1] Title — https://…`" layout links the bare URL (the host autolinks it),
+     * so the marker is not adjacent to the anchor. Reading back to the nearest marker
+     * in the same block still yields the number and the title before the URL.
+     * @param {Element} block - the paragraph or list item.
+     * @param {Element} link - the anchor to number.
+     * @returns {{ index: number, label: string } | undefined} marker and label.
+     */
+    function markerForLink (block, link) {
+      if (typeof document.createTreeWalker !== 'function') return undefined
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null)
+      let index
+      let label = ''
+      let node = walker.nextNode()
+      while (node !== null && (node.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0) {
+        const text = String(node.nodeValue || '')
+        const markers = [...text.matchAll(/\[(\d{1,3})\]/g)]
+        if (markers.length > 0) {
+          const last = markers[markers.length - 1]
+          index = Number(last[1])
+          label = text.slice(last.index + last[0].length)
+        } else if (index !== undefined) {
+          label += text
+        }
+        node = walker.nextNode()
+      }
+      if (index === undefined) return undefined
+      return { index, label: label.replace(/[—–\-:：\s]+$/, '').trim() }
+    }
+
     /**
      * Sources the answer cites, in document order, each carrying the number the model
      * gave it.
@@ -928,11 +961,22 @@ window.__ModuleLoader__.load({
       for (const link of document.querySelectorAll('a[href]')) {
         if (link.classList.contains('dpc-cite')) continue
         if (link.closest('.dpc-mode') !== null) continue
-        const title = (link.textContent || '').trim()
-        if (title === '' || title.startsWith('[')) continue
+        const block = link.closest('li,p,blockquote,td,h1,h2,h3,h4,h5,h6') ?? link.parentElement
+        if (block === null) continue
+        const anchorText = (link.textContent || '').trim()
+        if (anchorText.startsWith('[')) continue
         let index = markerBefore(link)
+        let title = anchorText
         if (index === undefined) index = listIndexOf(link)
-        if (index === undefined) continue
+        if (index === undefined) {
+          // Markers that are not adjacent (a linked bare URL after "— ") are read back
+          // from the block, which also supplies the title in front of the URL.
+          const found = markerForLink(block, link)
+          if (found === undefined) continue
+          index = found.index
+          if (/^https?:\/\//i.test(anchorText) || anchorText === '') title = found.label === '' ? anchorText : found.label
+        }
+        if (title === '' || title.startsWith('[')) continue
         entries.push({ index, href: link.getAttribute('href') ?? '', title, element: link })
       }
       return entries

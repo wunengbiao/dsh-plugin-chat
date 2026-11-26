@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- Source lists written as `[2] Title — https://…` (a linked bare URL, marker not adjacent) and as bullet lists now resolve too: when no adjacent marker exists, the nearest earlier marker in the same block numbers the link and the text before the URL becomes its title.
 - The `citation_index` tool gained a `list` action that returns a ready-to-paste `- [n] title — url` block, and the client breaks a source run onto separate lines when markdown collapsed it into one paragraph.
 - Citation rendering now also understands the paragraph form `[1] [title](url)` (not just ordered lists), and a transcript that mounts without DOM mutations still gets its chips.
 - Chat mode ships a scoped `citation_index` tool that reserves the next citation numbers per conversation (persisted to `dsh-plugin-chat-citations.json`), and the per-step context repeats the next number.
