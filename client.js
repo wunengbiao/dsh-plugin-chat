@@ -867,13 +867,15 @@ window.__ModuleLoader__.load({
 
     /** Styles for a stamped citation marker, matching the web chat's raised index. */
     const CITATION_CSS = [
-      '.dpc-cite{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:16px;height:16px;margin:0 3px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:0;line-height:1;text-decoration:none;position:relative;top:-2px;vertical-align:baseline;overflow:hidden}',
+      // The host may render a citation as a superscript link with its own inline
+      // style, so the layout properties here have to win outright.
+      '.dpc-cite{display:inline-flex !important;align-items:center;justify-content:center;box-sizing:border-box;width:16px !important;height:16px !important;min-width:16px;margin:0 3px !important;padding:0 !important;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.45));border-radius:999px;background:var(--dsw-alias-bg-layer-2,rgba(127,131,140,.12));color:var(--dsw-alias-label-secondary,#6b7280);font-size:0 !important;line-height:1 !important;text-decoration:none !important;position:relative;top:-2px !important;vertical-align:baseline !important;overflow:hidden;flex:none}',
       '.dpc-cite>svg{display:none !important}',
       '.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:9px;font-weight:600;letter-spacing:0;line-height:1;text-align:center}',
       '.dpc-cite[data-dpc-wide="2"]::after{font-size:8px;letter-spacing:-.3px}',
       '.dpc-cite[data-dpc-wide="3"]::after{font-size:7px;letter-spacing:-.4px}',
-      '.dpc-cite[data-dpc-bare="true"]{cursor:default;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-tertiary)}',
-      '@media (hover:hover){.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
+      '.dpc-cite[data-dpc-bare="true"]{cursor:default;color:var(--dsw-alias-label-tertiary,#8a8f98)}',
+      '@media (hover:hover){.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.3));color:var(--dsw-alias-label-primary,inherit)}}',
     ]
 
     /**
@@ -890,8 +892,12 @@ window.__ModuleLoader__.load({
       for (const anchor of document.querySelectorAll('a[href]')) {
         if (anchor.classList.contains('dpc-cite')) continue
         const text = (anchor.textContent || '').trim()
-        if (!CITATION_TEXT.test(text)) continue
-        const number = Number(text.slice(1, -1))
+        // Both shapes occur in the host's markdown: a link labelled `[12]`, and a
+        // link whose label is just `12` (rendered as a superscript reference).
+        const shaped = CITATION_TEXT.test(text) ? text.slice(1, -1) : (/^\d{1,3}$/.test(text) ? text : undefined)
+        if (shaped === undefined) continue
+        if (!CITATION_TEXT.test(text) && anchor.closest('p,li,td,th,dd,blockquote,h1,h2,h3,h4,h5,h6') === null) continue
+        const number = Number(shaped)
         const entry = listForNode(anchor, lists, anchor.parentElement)
         const display = entry === undefined ? number : entry.base + number
         anchor.dataset.dpcCite = String(display)
