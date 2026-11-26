@@ -869,9 +869,9 @@ window.__ModuleLoader__.load({
     const CITATION_CSS = [
       // The host may render a citation as a superscript link with its own inline
       // style, so the layout properties here have to win outright.
-      '.dpc-cite{display:inline-flex !important;align-items:center;justify-content:center;box-sizing:border-box;width:16px !important;height:16px !important;min-width:16px;margin:0 3px !important;padding:0 !important;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.45));border-radius:999px;background:var(--dsw-alias-bg-layer-2,rgba(127,131,140,.12));color:var(--dsw-alias-label-secondary,#6b7280);font-size:0 !important;line-height:1 !important;text-decoration:none !important;position:relative;top:-2px !important;vertical-align:baseline !important;overflow:hidden;flex:none}',
+      '.dpc-cite{display:inline-flex !important;align-items:center;justify-content:center;box-sizing:border-box;width:auto !important;height:16px !important;min-width:16px;margin:0 3px !important;padding:0 2px !important;white-space:nowrap !important;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.45));border-radius:999px;background:var(--dsw-alias-bg-layer-2,rgba(127,131,140,.12));color:var(--dsw-alias-label-secondary,#6b7280);font-size:0 !important;line-height:1 !important;text-decoration:none !important;position:relative;top:-2px !important;vertical-align:baseline !important;overflow:hidden;flex:none}',
       '.dpc-cite>svg{display:none !important}',
-      '.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:9px;font-weight:600;letter-spacing:0;line-height:1;text-align:center}',
+      '.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:9px;font-weight:600;letter-spacing:0;line-height:1;text-align:center;white-space:nowrap}',
       '.dpc-cite[data-dpc-wide="2"]::after{font-size:8px;letter-spacing:-.3px}',
       '.dpc-cite[data-dpc-wide="3"]::after{font-size:7px;letter-spacing:-.4px}',
       '.dpc-cite[data-dpc-bare="true"]{cursor:default;color:var(--dsw-alias-label-tertiary,#8a8f98)}',
