@@ -1093,10 +1093,17 @@ window.__ModuleLoader__.load({
           // The section header keeps its shape but names the list and offers a new
           // conversation instead of a new workspace. The host header is private
           // too, so the text and the glyph are swapped by the same stylesheet.
-          rules.push('[data-sidebar-workspace-header] [class*="sectionLabel"]{font-size:0 !important}')
+          // Swap the row label without touching its metrics: the original text keeps the
+          // host's line box (and therefore its vertical centering) and is pushed out of
+          // view instead of being collapsed with font-size:0, which shifted the new
+          // text a few pixels against the row's buttons.
+          // The row label keeps the host's own box and line metrics (so it stays centred
+          // with the buttons); only its glyphs are made transparent and the replacement
+          // text is drawn inside that same box.
+          rules.push('[data-sidebar-workspace-header] [class*="sectionLabel"]{position:relative !important;color:transparent !important}')
           rules.push(
             '[data-sidebar-workspace-header] [class*="sectionLabel"]::after'
-            + "{content:'" + t('sidebarTitle') + "';font-size:14px;line-height:20px}",
+            + "{content:'" + t('sidebarTitle') + "';position:absolute;left:0;top:0;height:100%;display:flex;align-items:center;white-space:nowrap;font:inherit;line-height:20px;color:var(--dsw-alias-label-tertiary,rgb(173,178,184))}",
           )
           const addButton = '[data-sidebar-workspace-header] button:has(svg[data-icon="' + ADD_WORKSPACE_ICON + '"])'
           rules.push(addButton + ' svg{display:none !important}')
