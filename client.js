@@ -919,11 +919,12 @@ window.__ModuleLoader__.load({
     const bareSkip = new WeakSet()
 
     /**
-     * Numbered source lists in the transcript, numbered across the conversation.
+     * Numbered source lists in the transcript.
      *
-     * Every turn that searches ends with a list of links; the model restarts at 1
-     * each turn, so the running `base` continues the numbering from the turns
-     * before it and the list itself is shifted with `start`.
+     * Every turn that searches ends with a list of links, and the list carries the
+     * number the model gave its first entry: a model that keeps counting writes
+     * `13. …`, which the host renders as `<ol start="13">`. `base` is that offset, so
+     * nothing is renumbered here and the prose and the list always agree.
      * @returns {Array<{ element: Element, items: Element[], links: Element[], base: number }>} lists.
      */
     function sourceLists () {
