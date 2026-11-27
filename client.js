@@ -386,10 +386,10 @@ window.__ModuleLoader__.load({
      * @type {{ value: { present: boolean, toggleLeft?: number, toggleCenterY?: number }, listeners: Set<() => void> }}
      */
     const chrome = {
-      value: { placement: 'header', tabsRight: undefined, tabsCenterY: undefined },
+      value: { placement: 'header', tabsInset: undefined, tabsCenterY: undefined },
       listeners: new Set(),
       /**
-       * @param {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number, tabsRight?: number, tabsCenterY?: number }} value - measured placement.
+       * @param {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number, tabsInset?: number, tabsCenterY?: number }} value - measured placement.
        */
       publish (value) {
         const current = this.value
@@ -399,7 +399,7 @@ window.__ModuleLoader__.load({
           && current.centerY === value.centerY
           && current.left === value.left
           && current.top === value.top
-          && current.tabsRight === value.tabsRight
+          && current.tabsInset === value.tabsInset
           && current.tabsCenterY === value.tabsCenterY
         ) return
         this.value = value
@@ -427,16 +427,17 @@ window.__ModuleLoader__.load({
      * the trailing view buttons so the button sits beside the tabs.
      */
     function measureTabs () {
-      if (typeof document === 'undefined') return { right: undefined, centerY: undefined }
+      if (typeof document === 'undefined') return { inset: undefined, centerY: undefined }
       const row = document.querySelector('[class*="tabs"]')
       const rowRect = row === null ? undefined : row.getBoundingClientRect()
-      if (rowRect === undefined || rowRect.height === 0) return { right: undefined, centerY: undefined }
+      if (rowRect === undefined || rowRect.height === 0) return { inset: undefined, centerY: undefined }
       const views = row.querySelector('[class*="views"]')
       const viewsRect = views === null ? undefined : views.getBoundingClientRect()
       // The trailing view buttons only take space when the right bar is shown; otherwise
-      // the button sits at the row's own right edge.
-      const right = viewsRect !== undefined && viewsRect.width > 40 ? viewsRect.left - 8 : rowRect.right - 8
-      return { right, centerY: rowRect.top + rowRect.height / 2 }
+      // the button sits at the row's own right edge. A right inset is published because a
+      // fixed box anchored by `left` near the viewport edge gets clamped and wraps.
+      const right = viewsRect !== undefined && viewsRect.width > 40 ? viewsRect.left - 6 : rowRect.right - 6
+      return { inset: Math.max(6, window.innerWidth - right), centerY: rowRect.top + rowRect.height / 2 }
     }
 
     function refreshChrome () {
@@ -452,7 +453,7 @@ window.__ModuleLoader__.load({
       // lands it on the window's traffic lights.
       if (sidebarWidth < 200) {
         const railTabs = measureTabs()
-        chrome.publish({ placement: 'hidden', tabsRight: railTabs.right, tabsCenterY: railTabs.centerY })
+        chrome.publish({ placement: 'hidden', tabsInset: railTabs.inset, tabsCenterY: railTabs.centerY })
         return
       }
       const tabs = measureTabs()
@@ -463,7 +464,7 @@ window.__ModuleLoader__.load({
           placement: 'section',
           right: sectionRect.right,
           centerY: sectionRect.top + sectionRect.height / 2,
-          tabsRight: tabs.right,
+          tabsInset: tabs.inset,
           tabsCenterY: tabs.centerY,
         })
         return
@@ -474,7 +475,7 @@ window.__ModuleLoader__.load({
         placement: 'header',
         left: headerRect === undefined ? 0 : headerRect.left + 22,
         top: headerRect === undefined ? 12 : headerRect.top + 12,
-        tabsRight: tabs.right,
+        tabsInset: tabs.inset,
         tabsCenterY: tabs.centerY,
       })
     }
@@ -1340,12 +1341,13 @@ window.__ModuleLoader__.load({
 
     /** Styles of the sources button and drawer. */
     const SOURCES_CSS = [
-      '.dpc-src-btn{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.4));background:transparent;color:var(--dsw-alias-label-secondary,#9aa0a6);font-size:12px;line-height:1;cursor:pointer;transition:background .12s ease,color .12s ease}',
+      '.dpc-src-btn{display:inline-flex !important;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.4));background:transparent;color:var(--dsw-alias-label-secondary,#9aa0a6);font-size:12px;line-height:22px;white-space:nowrap !important;cursor:pointer;transition:background .12s ease,color .12s ease}',
+      '.dpc-src-btn-label{white-space:nowrap;line-height:22px}',
       '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,#fff)}}',
       '.dpc-src-btn[data-open="true"]{background:var(--dsw-alias-bg-layer-2,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,#fff)}',
-      '.dpc-src-btn-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--dsw-alias-label-link,#7aa7e0);color:#fff;font-size:10px;font-weight:600}',
-      '.dpc-src-backdrop{position:fixed;inset:0;z-index:74;background:rgba(8,10,14,.32)}',
-      '.dpc-src-drawer{position:fixed;top:0;right:0;bottom:0;z-index:75;display:flex;flex-direction:column;width:360px;max-width:86vw;background:var(--dsw-alias-bg-overlay,#1b1b1c);border-left:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.35));box-shadow:-18px 0 48px rgba(0,0,0,.28)}',
+      '.dpc-src-btn-count{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;border-radius:999px;background:var(--dsw-alias-label-link,#7aa7e0);color:#fff;font-size:10px;font-weight:600;line-height:1}',
+      '.dpc-src-backdrop{position:fixed;inset:0;z-index:200;background:rgba(8,10,14,.32)}',
+      '.dpc-src-drawer{position:fixed;top:0;right:0;bottom:0;z-index:201;display:flex;flex-direction:column;width:360px;max-width:86vw;background:var(--dsw-alias-bg-overlay,#1b1b1c);border-left:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.35));box-shadow:-18px 0 48px rgba(0,0,0,.28)}',
       '.dpc-src-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.28))}',
       '.dpc-src-head-title{font-size:14px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary,inherit)}',
       '.dpc-src-head-count{font-size:12px;color:var(--dsw-alias-label-tertiary,#8a8f98)}',
@@ -1374,15 +1376,18 @@ window.__ModuleLoader__.load({
         const placement = useChrome()
         const [, bump] = React.useState(0)
         React.useEffect(() => sourcesPanel.subscribe(() => bump(count => count + 1)), [])
-        if (placement.tabsRight === undefined || placement.tabsCenterY === undefined) return null
+        React.useEffect(() => modeStore.subscribe(() => bump(count => count + 1)), [])
+        // The drawer only means something in chat mode.
+        if (modeStore.mode() !== 'chat') return null
+        if (placement.tabsInset === undefined || placement.tabsCenterY === undefined) return null
         const count = ledgerCache.sources.length
         return h('div', {
           className: 'dpc-src-launcher',
           style: {
             position: 'fixed',
-            left: placement.tabsRight,
+            right: placement.tabsInset,
             top: placement.tabsCenterY,
-            transform: 'translate(-100%, -50%)',
+            transform: 'translateY(-50%)',
             zIndex: 54,
           },
         },
@@ -1391,10 +1396,10 @@ window.__ModuleLoader__.load({
           type: 'button',
           className: 'dpc-src-btn',
           'data-open': sourcesPanel.open ? 'true' : 'false',
-          title: '查看本文引用来源',
+          title: '查看本次回答的引用来源',
           onClick: () => sourcesPanel.set(!sourcesPanel.open),
         },
-        h('span', null, '来源'),
+        h('span', { className: 'dpc-src-btn-label' }, '来源'),
         count === 0 ? null : h('span', { className: 'dpc-src-btn-count' }, String(count))))
       }
     }
@@ -1408,6 +1413,9 @@ window.__ModuleLoader__.load({
         const [, bump] = React.useState(0)
         React.useEffect(() => sourcesPanel.subscribe(() => bump(count => count + 1)), [])
         const open = sourcesPanel.open
+        React.useEffect(() => modeStore.subscribe(() => {
+          if (modeStore.mode() !== 'chat' && sourcesPanel.open) sourcesPanel.set(false)
+        }), [])
         React.useEffect(() => {
           if (!open) return undefined
           const onKey = (event) => { if (event.key === 'Escape') sourcesPanel.set(false) }
