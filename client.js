@@ -1355,7 +1355,12 @@ window.__ModuleLoader__.load({
           }
         }
         const current = target.querySelector('.dpc-sources')
-        if (current !== null && current.dataset.signature === signature) continue
+        if (current !== null && current.dataset.signature === signature) {
+          // A streaming answer keeps appending after the section was drawn; keep it last
+          // so it never ends up in the middle of the reply.
+          if (target.lastElementChild !== current) target.appendChild(current)
+          continue
+        }
         if (current !== null) current.remove()
         const section = renderSourceSection(used)
         section.dataset.signature = signature
