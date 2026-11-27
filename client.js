@@ -79,11 +79,31 @@ window.__ModuleLoader__.load({
     /** Sources each turn searched, in result order: the fallback numbering source. */
     const turnSources = new Map()
 
+    /** Turns in the order the stream reported them: only finished ones get a section. */
+    const startedTurns = []
+    /** Length of each answer on the previous pass, to tell settled text from streaming. */
+    const answerLengths = new Map()
+    
+    const finishedTurns = new Set()
+
     function indexSources (window) {
       const entries = window?.entries ?? []
       let changed = false
       for (const entry of entries) {
         const event = entry?.event
+        if (event?.type === 'turn/start') {
+          const started = Number(event.data?.turn)
+          if (Number.isFinite(started) && !startedTurns.includes(started)) startedTurns.push(started)
+          continue
+        }
+        if (event?.type === 'turn/end') {
+          const ended = Number(event.data?.turn)
+          if (Number.isFinite(ended)) {
+            if (!startedTurns.includes(ended)) startedTurns.push(ended)
+            finishedTurns.add(ended)
+          }
+          continue
+        }
         if (event?.type !== 'tool/result') continue
         const sources = event.data?.meta?.sources
         if (!Array.isArray(sources)) continue
@@ -1321,8 +1341,44 @@ window.__ModuleLoader__.load({
         if (steps === undefined) turns.set(match[1], [{ step: Number(match[2]), body }])
         else steps.push({ step: Number(match[2]), body })
       }
-      for (const [turn, steps] of turns) {
+      const groups = [...turns.entries()]
+      // The node key's first field is not the stream's turn number, so answers are
+      // aligned with the turns from the newest one backwards.
+      const base = startedTurns.length - groups.length
+      for (let position = 0; position < groups.length; position += 1) {
+        const [key, steps] = groups[position]
         steps.sort((left, right) => left.step - right.step)
+        const turn = base >= 0 ? startedTurns[base + position] : undefined
+        // A section is only drawn once the answer stopped growing: while it streams the
+        // block would sit mid-reply and keep moving. Two consecutive passes with the same
+        // length mean the text settled.
+        // `textContent` is layout-independent; `innerText` fluctuates while the browser
+        // re-lays out, which kept resetting the settled check.
+        const length = steps.reduce((total, item) => {
+          const text = item.body.textContent || ''
+          const own = item.body.querySelector('.dpc-sources')
+          return total + (own === null ? text.length : text.length - (own.textContent || '').length)
+        }, 0)
+        const now = Date.now()
+        const seen = answerLengths.get(key)
+        const dropSection = () => {
+          for (const { body } of steps) {
+            for (const stale of body.querySelectorAll('.dpc-sources')) stale.remove()
+          }
+        }
+        if (seen === undefined || seen.length !== length) {
+          // Still growing: remember when it last changed and show nothing yet.
+          answerLengths.set(key, { length, since: now })
+          dropSection()
+          continue
+        }
+        const finished = turn === undefined || finishedTurns.has(turn)
+        // A finished turn draws as soon as the text settles; an interrupted one waits a
+        // little longer, so a chatty stream cannot make the block jump around.
+        if (!finished && now - seen.since < 5000) {
+          dropSection()
+          continue
+        }
         const numbers = []
         for (const { body } of steps) {
           for (const chip of body.querySelectorAll('.dpc-cite')) {
@@ -1354,6 +1410,7 @@ window.__ModuleLoader__.load({
             if (body !== target || stale.dataset.signature !== signature) stale.remove()
           }
         }
+        used.sort((left, right) => left.index - right.index)
         const current = target.querySelector('.dpc-sources')
         if (current !== null && current.dataset.signature === signature) {
           // A streaming answer keeps appending after the section was drawn; keep it last

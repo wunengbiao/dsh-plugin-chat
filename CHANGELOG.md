@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- The source section is hidden until the answer actually finishes (turn/end plus settled text) and is then drawn once, sorted by number at the end of the reply.
 - The generated source section is re-anchored to the end while an answer is still streaming, so it no longer ends up in the middle of the reply.
 - The generated source section no longer depends on the model registering numbers: when the citation ledger has no entry it falls back to that turn's own search results, so the block is always present and always in the fixed format.
 - The generated source section is attached to the LAST step of an answer (the host renders an answer as several step blocks), so it no longer lands in the middle of the reply.
