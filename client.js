@@ -935,9 +935,6 @@ window.__ModuleLoader__.load({
       // slightly larger and perfectly round.
       '.dpc-cite{display:inline-flex !important;align-items:center;justify-content:center;box-sizing:border-box;width:18px !important;height:18px !important;min-width:18px;margin:0 3px !important;padding:0 !important;border:0 !important;border-radius:999px !important;background:var(--dsw-alias-label-primary,#111) !important;color:var(--dsw-alias-bg-base,#fff) !important;font-size:0 !important;line-height:1 !important;text-decoration:none !important;position:relative;top:-2px !important;vertical-align:baseline !important;overflow:hidden;flex:none;transition:opacity .12s ease}',
       '.dpc-cite>svg{display:none !important}',
-      '.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:10px;font-weight:600;letter-spacing:0;line-height:1;text-align:center;white-space:nowrap}',
-      '.dpc-cite[data-dpc-wide="2"]::after{font-size:8.5px;letter-spacing:-.3px}',
-      '.dpc-cite[data-dpc-wide="3"]::after{font-size:7.5px;letter-spacing:-.4px}',
       '.dpc-cite[data-dpc-bare="true"]{background:var(--dsw-alias-label-tertiary,#8a8f98) !important;color:var(--dsw-alias-bg-base,#fff) !important;opacity:.72;cursor:default}',
       '@media (hover:hover){.dpc-cite:hover{opacity:.82}}',
       // A normalised source entry: ordinal, site icon, then the title as the link.
@@ -965,6 +962,55 @@ window.__ModuleLoader__.load({
      * behavior — so a streamed re-render simply gets stamped again.
      * @param {Array<object>} entries - cited sources in document order.
      */
+
+    /**
+     * Pin a chip's geometry inline.
+     *
+     * A stylesheet can be stale in a window that has not reloaded yet (an older build drew
+     * the chip as an auto-width pill, i.e. an ellipse); inline `!important` wins over any
+     * stylesheet, so the badge is a circle either way.
+     */
+    const CHIP_STYLE = [
+      'width:18px !important',
+      'min-width:18px !important',
+      'height:18px !important',
+      'padding:0 !important',
+      'border:0 !important',
+      'border-radius:999px !important',
+      'display:inline-flex !important',
+      'align-items:center !important',
+      'justify-content:center !important',
+      'box-sizing:border-box !important',
+      'overflow:hidden !important',
+      'font-weight:600 !important',
+      'letter-spacing:0 !important',
+      'text-decoration:none !important',
+      'line-height:1 !important',
+      'text-align:center !important',
+      'vertical-align:baseline !important',
+      'position:relative',
+      'top:-2px',
+    ].join(';')
+
+    /**
+     * Stamp the inline geometry onto one chip.
+     * @param {Element} chip - the citation anchor.
+     * @param {boolean} bare - an unresolved number, drawn muted.
+     */
+    function pinChip (chip, bare, label) {
+      const text = label === undefined ? (chip.dataset.dpcCite ?? '') : String(label)
+      const size = text.length >= 3 ? 7.5 : text.length === 2 ? 8.5 : 10
+      const colours = bare === true
+        ? 'background:var(--dsw-alias-label-tertiary,#8a8f98) !important;color:var(--dsw-alias-bg-base,#fff) !important;opacity:.72'
+        : 'background:var(--dsw-alias-label-primary,#111) !important;color:var(--dsw-alias-bg-base,#fff) !important'
+      if (chip.getAttribute('data-dpc-pinned') !== 'true') {
+        chip.setAttribute('style', CHIP_STYLE + ';font-size:' + size + 'px !important;' + colours)
+        chip.setAttribute('data-dpc-pinned', 'true')
+      }
+      // The number is real text, so the badge survives a stylesheet that has not reloaded.
+      if (text !== '' && chip.textContent !== text) chip.textContent = text
+    }
+
     function stampCitations (entries) {
       if (typeof document === 'undefined') return
       for (const anchor of document.querySelectorAll('a[href]')) {
@@ -984,6 +1030,7 @@ window.__ModuleLoader__.load({
           anchor.dataset.dpcTitle = resolved.title
         }
         anchor.classList.add('dpc-cite')
+        pinChip(anchor, false, anchor.dataset.dpcCite)
       }
     }
 
@@ -1194,6 +1241,7 @@ window.__ModuleLoader__.load({
           const display = number
           const chip = document.createElement('a')
           chip.className = 'dpc-cite dpc-cite-bare'
+          pinChip(chip, true, String(display))
           chip.dataset.dpcCite = String(display)
           if (String(display).length > 1) chip.dataset.dpcWide = String(String(display).length)
           if (resolved === undefined) {

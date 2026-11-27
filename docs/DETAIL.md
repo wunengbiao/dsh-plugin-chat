@@ -153,3 +153,5 @@ DSH 默认是一个编码工作台：新建会话要绑一个工作区目录，A
 
 **圆形是靠固定宽高保证的**：徽标改成 `width:18px !important; height:18px !important; padding:0`——之前用 `width:auto + min-width + padding`，一位数之外的字宽会把盒子撑宽、变成椭圆。两位数/三位数靠缩小字号（8.5px / 7.5px）留在圆内。实测所有徽标都是 18×18、`border-radius:999px`；暗色主题下自动是白底深色数字。
 
+**徽标的几何与数字都写进 inline style**：固定 18×18、无内边距、`border-radius:999px`、字号 10px（两位数 8.5、三位 7.5）以及底色/字色全部用 inline `!important`；数字直接用文本节点（不再用 `::after` 生成）。这样即使某个窗口里还挂着旧版样式表（旧版是 `width:auto + padding`，会把徽标撑成椭圆），徽标依旧是正圆、数字依旧可见。注意：inline 样式只在**新版客户端代码加载后**生效——若桌面窗口还跑着旧 bundle，需要重开窗口才会更新。
+
