@@ -1347,11 +1347,13 @@ window.__ModuleLoader__.load({
     /** Styles of the sources button and drawer. */
     const SOURCES_CSS = [
       '.dpc-src-launcher,.dpc-src-btn,.dpc-src-backdrop,.dpc-src-drawer{-webkit-app-region:no-drag;pointer-events:auto}',
-      '.dpc-src-btn{display:inline-flex !important;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.4));background:transparent;color:var(--dsw-alias-label-secondary,#9aa0a6);font-size:12px;line-height:22px;white-space:nowrap !important;cursor:pointer;transition:background .12s ease,color .12s ease}',
-      '.dpc-src-btn-label{white-space:nowrap;line-height:22px}',
-      '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,#fff)}}',
-      '.dpc-src-btn[data-open="true"]{background:var(--dsw-alias-bg-layer-2,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,#fff)}',
-      '.dpc-src-btn-count{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;border-radius:999px;background:var(--dsw-alias-label-link,#7aa7e0);color:#fff;font-size:10px;font-weight:600;line-height:1}',
+      // Styled like the host's own tab row: text weight and colour, a soft hover
+      // surface, and the count as a muted number instead of a coloured badge.
+      '.dpc-src-btn{display:inline-flex !important;align-items:center;gap:6px;height:24px;padding:0 8px;border:0 !important;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary,#adb2b8);font-size:13px;font-weight:500;line-height:24px;white-space:nowrap !important;cursor:pointer;transition:background .12s ease,color .12s ease}',
+      '.dpc-src-btn-label{white-space:nowrap;line-height:24px}',
+      '.dpc-src-btn-count{font-size:12px;font-weight:400;color:var(--dsw-alias-label-caption,#7f858c);font-variant-numeric:tabular-nums;line-height:24px}',
+      '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}}',
+      '.dpc-src-btn[data-open="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}',
       '.dpc-src-backdrop{position:fixed;inset:0;z-index:200;background:rgba(8,10,14,.32)}',
       '.dpc-src-drawer{position:fixed;top:0;right:0;bottom:0;z-index:201;display:flex;flex-direction:column;width:360px;max-width:86vw;background:var(--dsw-alias-bg-overlay,#1b1b1c);border-left:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.35));box-shadow:-18px 0 48px rgba(0,0,0,.28)}',
       '.dpc-src-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.28))}',
@@ -1385,9 +1387,13 @@ window.__ModuleLoader__.load({
         React.useEffect(() => modeStore.subscribe(() => bump(count => count + 1)), [])
         // The drawer only means something in chat mode.
         if (modeStore.mode() !== 'chat') return null
-        if (placement.tabsInset === undefined || placement.tabsCenterY === undefined) return null
         const current = modeStore.probe
         const sessionId = current === undefined ? undefined : current.sessionId
+        React.useEffect(() => {
+          if (sessionId === undefined) return
+          refreshLedger(sessionId, true)
+        }, [sessionId])
+        if (placement.tabsInset === undefined || placement.tabsCenterY === undefined) return null
         const count = sessionId !== undefined && ledgerCache.sessionId === sessionId ? ledgerCache.sources.length : 0
         return h('div', {
           className: 'dpc-src-launcher',
