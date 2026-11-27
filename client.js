@@ -1453,7 +1453,10 @@ window.__ModuleLoader__.load({
      */
     function syncSourcesButton () {
       if (typeof document === 'undefined') return
-      const row = document.querySelector('[class*="tabs"]')
+      // Only the conversation's own view-tab row: a bare [class*="tabs"] also matches the
+      // settings page's tab strip, which put a stray "来源" under it.
+      const viewTabs = document.querySelector('[class*="viewTabs"]')
+      const row = viewTabs === null ? null : viewTabs.parentElement
       const existing = document.querySelector('.dpc-src-btn')
       if (row === null || modeStore.mode() !== 'chat') {
         if (existing !== null) existing.remove()
@@ -1466,10 +1469,13 @@ window.__ModuleLoader__.load({
         style.textContent = SOURCES_CSS
         document.head.appendChild(style)
       }
-      const views = row.querySelector('[class*="views"]')
+      const views = row === null ? null : row.querySelector('[class*="views"]')
       let button = existing
-      if (button === null || button.parentElement !== row) {
-        if (button !== null) button.remove()
+      if (button !== null && button.parentElement !== row) {
+        button.remove()
+        button = null
+      }
+      if (button === null) {
         button = document.createElement('button')
         button.type = 'button'
         button.className = 'dpc-src-btn'

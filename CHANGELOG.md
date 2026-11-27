@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- The 来源 button is only inserted into the conversation's own view-tab row; a bare `[class*="tabs"]` also matched the settings page tab strip and put a stray label there.
 - The prompt now forbids every shape of a model-written source list (bold line, heading, `---` + heading, bullet or footnote list) and explains that the plugin renders it, closing the loophole that let answers append one.
 - The chat prompt no longer tells the model to prefer inline markdown links over numbers (that line made answers carry zero citations), and a trailing link list is now harvested into the sources drawer instead of staying in the reply.
 - Chat mode keeps its session group expanded (the hidden workspace row is re-expanded whenever the host collapses it) and nudges a re-measure when the sidebar opens, so the list no longer shows a short preview until a row is clicked.
