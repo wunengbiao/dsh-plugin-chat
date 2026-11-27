@@ -1373,47 +1373,49 @@ window.__ModuleLoader__.load({
     ].join('\n')
 
     /**
-     * The "来源" button beside the conversation tabs.
-     * @param {object} ctx - client plugin context.
-     * @returns {Function} React component.
+     * Keep the "来源" button mounted inside the host's tab row.
+     *
+     * Living in the row means the host's own flex layout, spacing and vertical alignment
+     * apply, instead of an overlay that has to be aligned by hand (which overlapped the
+     * row's "…" control and sat a few pixels off).
      */
-    function createSourcesLauncher (ctx) {
-      return function SourcesLauncher () {
-        const placement = useChrome()
-        const [, bump] = React.useState(0)
-        React.useEffect(() => sourcesPanel.subscribe(() => bump(count => count + 1)), [])
-        React.useEffect(() => modeStore.subscribe(() => bump(count => count + 1)), [])
-        // The drawer only means something in chat mode.
-        if (modeStore.mode() !== 'chat') return null
-        const current = modeStore.probe
-        const sessionId = current === undefined ? undefined : current.sessionId
-        React.useEffect(() => {
-          if (sessionId === undefined) return
-          refreshLedger(sessionId, true)
-        }, [sessionId])
-        if (placement.tabsLeft === undefined || placement.tabsCenterY === undefined) return null
-        const count = sessionId !== undefined && ledgerCache.sessionId === sessionId ? ledgerCache.sources.length : 0
-        return h('div', {
-          className: 'dpc-src-launcher',
-          style: {
-            position: 'fixed',
-            left: placement.tabsLeft,
-            top: placement.tabsCenterY,
-            transform: 'translateY(-50%)',
-            zIndex: 54,
-          },
-        },
-        h('style', null, SOURCES_CSS),
-        h('button', {
-          type: 'button',
-          className: 'dpc-src-btn',
-          'data-open': sourcesPanel.open ? 'true' : 'false',
-          title: '查看本次回答的引用来源',
-          onClick: () => sourcesPanel.set(!sourcesPanel.open, sessionId),
-        },
-        h('span', { className: 'dpc-src-btn-label' }, '来源'),
-        count === 0 ? null : h('span', { className: 'dpc-src-btn-count' }, String(count))))
+    function syncSourcesButton () {
+      if (typeof document === 'undefined') return
+      const row = document.querySelector('[class*="tabs"]')
+      const existing = document.querySelector('.dpc-src-btn')
+      if (row === null || modeStore.mode() !== 'chat') {
+        if (existing !== null) existing.remove()
+        return
       }
+      // The stylesheet must exist even when the drawer is closed.
+      if (document.getElementById('dsh-plugin-chat-sources-style') === null) {
+        const style = document.createElement('style')
+        style.id = 'dsh-plugin-chat-sources-style'
+        style.textContent = SOURCES_CSS
+        document.head.appendChild(style)
+      }
+      const views = row.querySelector('[class*="views"]')
+      let button = existing
+      if (button === null || button.parentElement !== row) {
+        if (button !== null) button.remove()
+        button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'dpc-src-btn'
+        button.title = '查看本次回答的引用来源'
+        button.addEventListener('click', () => {
+          const current = modeStore.probe
+          const sessionId = current === undefined ? undefined : current.sessionId
+          sourcesPanel.set(!sourcesPanel.open, sessionId)
+          syncSourcesButton()
+        })
+        row.insertBefore(button, views === null ? null : views)
+      }
+      const current = modeStore.probe
+      const sessionId = current === undefined ? undefined : current.sessionId
+      const count = sessionId !== undefined && ledgerCache.sessionId === sessionId ? ledgerCache.sources.length : 0
+      const label = '来源' + (count === 0 ? '' : ' ' + count)
+      if ((button.textContent || '') !== label) button.textContent = label
+      button.dataset.open = sourcesPanel.open ? 'true' : 'false'
     }
 
     /**
@@ -1845,6 +1847,7 @@ window.__ModuleLoader__.load({
               const entries = sourceEntries()
               stampCitations(entries)
               stampBareCitations(entries)
+              syncSourcesButton()
               const current = modeStore.probe
               if (current !== undefined && current.sessionId !== undefined) refreshLedger(current.sessionId)
               applySourceSections()
@@ -1858,6 +1861,7 @@ window.__ModuleLoader__.load({
           const observer = new MutationObserver(schedule)
           observer.observe(document.body, { childList: true, subtree: true })
           normalizeSourceRuns()
+          syncSourcesButton()
           stampCitations(sourceEntries())
           // A transcript that mounts without further mutations (opening an old
           // conversation) still needs one bare-citation pass.
@@ -2187,7 +2191,6 @@ window.__ModuleLoader__.load({
         // own chrome strip beside the collapse control. All three occupants share
         // ONE injection: a second `ctx.slots.inject` on the same slot key replaces
         // the first, which silently dropped the switch (and the card) before.
-        const SourcesLauncher = createSourcesLauncher(ctx)
         const SourcesDrawer = createSourcesDrawer()
         ctx.slots.inject('shell.overlay', function* () {
           yield ctx.slots.register({
@@ -2195,11 +2198,6 @@ window.__ModuleLoader__.load({
             id: 'dsh-plugin-chat-switch',
             order: 5,
           }, Overlay)
-          yield ctx.slots.register({
-            name: 'shell.overlay',
-            id: 'dsh-plugin-chat-sources',
-            order: 8,
-          }, SourcesLauncher)
           yield ctx.slots.register({
             name: 'shell.overlay',
             id: 'dsh-plugin-chat-sources-drawer',
