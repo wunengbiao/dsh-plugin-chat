@@ -876,7 +876,10 @@ window.__ModuleLoader__.load({
       '.dpc-cite[data-dpc-wide="3"]::after{font-size:7px;letter-spacing:-.4px}',
       '.dpc-cite[data-dpc-bare="true"]{cursor:default;color:var(--dsw-alias-label-tertiary,#8a8f98)}',
       '@media (hover:hover){.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.3));color:var(--dsw-alias-label-primary,inherit)}}',
-      // A normalised source entry: the title is the link, styled as text.
+      // A normalised source entry: ordinal, site icon, then the title as the link.
+      '.dpc-src-index{color:var(--dsw-alias-label-tertiary,#8a8f98);font-variant-numeric:tabular-nums}',
+      '.dpc-src-favicon{display:inline-block;width:14px;height:14px;margin:0 6px 0 1px;border-radius:3px;object-fit:contain;vertical-align:-2px;opacity:.9}',
+      '.dpc-src-favicon[data-dpc-missing="true"]{display:none}',
       '.dpc-src-title{color:inherit !important;text-decoration:none !important;border-bottom:0 !important}',
       '@media (hover:hover){.dpc-src-title:hover{text-decoration:underline !important}}',
     ]
@@ -950,6 +953,34 @@ window.__ModuleLoader__.load({
       return { index, label: label.replace(/[—–\-:：\s]+$/, '').trim() }
     }
 
+
+    /**
+     * The label in front of one source link, without its number marker.
+     * @param {Element} block - the paragraph or list item.
+     * @param {Element} link - the source link.
+     * @returns {string} the cleaned label.
+     */
+    function labelBefore (block, link) {
+      let text
+      if (typeof document.createRange === 'function') {
+        try {
+          const range = document.createRange()
+          range.setStart(block, 0)
+          range.setEndBefore(link)
+          text = range.toString()
+        } catch {
+          text = ''
+        }
+      }
+      if (typeof text !== 'string' || text === '') {
+        text = String(block.textContent || '')
+      }
+      return text
+        .replace(/^\s*\[?\d{1,3}\]?\s*[.、,:：]?\s*/, '')
+        .replace(/[—–\-:：\s]+$/, '')
+        .trim()
+    }
+
     /**
      * Sources the answer cites, in document order, each carrying the number the model
      * gave it.
@@ -968,16 +999,24 @@ window.__ModuleLoader__.load({
         if (block === null) continue
         const anchorText = (link.textContent || '').trim()
         if (anchorText.startsWith('[')) continue
-        let index = markerBefore(link)
+        // A normalised entry carries its number, because its `[n]` marker is gone.
+        const preset = link.dataset === undefined ? Number.NaN : Number(link.dataset.dpcIndex)
+        let index = Number.isFinite(preset) && preset > 0 ? preset : markerBefore(link)
         let title = anchorText
-        if (index === undefined) index = listIndexOf(link)
         if (index === undefined) {
-          // Markers that are not adjacent (a linked bare URL after "— ") are read back
-          // from the block, which also supplies the title in front of the URL.
+          // A written `[n]` marker outranks the list position: answers often number
+          // entries 1, 3, 9 while the ordered list only counts 1, 2, 3.
           const found = markerForLink(block, link)
-          if (found === undefined) continue
-          index = found.index
-          if (/^https?:\/\//i.test(anchorText) || anchorText === '') title = found.label === '' ? anchorText : found.label
+          if (found !== undefined) {
+            index = found.index
+            if (/^https?:\/\//i.test(anchorText) || anchorText === '') title = found.label === '' ? anchorText : found.label
+          }
+        }
+        if (index === undefined) index = listIndexOf(link)
+        // A linked bare URL leaves the title in the text in front of it.
+        if (title === '' || /^https?:\/\//i.test(title)) {
+          const label = labelBefore(block, link)
+          if (label !== '') title = label
         }
         if (title === '' || title.startsWith('[')) continue
         entries.push({ index, href: link.getAttribute('href') ?? '', title, element: link })
@@ -1104,13 +1143,13 @@ window.__ModuleLoader__.load({
 
 
     /**
-     * Render source entries as "chip + clickable title".
+     * Render source entries as "number, site icon, clickable title".
      *
-     * Answers often link the bare URL and leave the title as plain text
-     * (`[1] Title — https://…`). Each block that consists only of such entries is
-     * rewritten to keep the marker and the title, with the title carrying the link, so
-     * the list reads `① Title` and a click opens the source. A block that also holds
-     * other content is left to the line-break pass.
+     * Answers usually link the bare URL and leave the title as plain text, so the list
+     * read `[1] Title — https://…`. Each block that consists only of numbered entries
+     * is rebuilt in the web chat's style: the ordinal (or the list's own marker), the
+     * site's favicon, and the title as the link. Blocks that also carry prose are left
+     * to the line-break pass so body text is never rewritten.
      * @param {Array<object>} entries - cited sources in document order.
      */
     function formatSourceEntries (entries) {
@@ -1141,19 +1180,51 @@ window.__ModuleLoader__.load({
         const ordered = [...list].sort((left, right) => (
           (left.element.compareDocumentPosition(right.element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 ? -1 : 1
         ))
+        // The ordinal is written out and the list marker is dropped, so the number in
+        // the list is always the citation number (an answer may number 1, 3, 9).
+        if (block.tagName === 'LI') block.style.listStyle = 'none'
         block.textContent = ''
         ordered.forEach((entry, position) => {
           if (position > 0) block.appendChild(document.createElement('br'))
-          block.appendChild(document.createTextNode('[' + entry.index + '] '))
+          const ordinal = document.createElement('span')
+          ordinal.className = 'dpc-src-index'
+          ordinal.textContent = entry.index + '.'
+          block.appendChild(ordinal)
+          block.appendChild(document.createTextNode(' '))
+          block.appendChild(sourceIcon(entry.href))
           const anchor = document.createElement('a')
           anchor.className = 'dpc-src-title'
           anchor.setAttribute('href', entry.href)
           anchor.setAttribute('rel', 'noopener noreferrer')
+          anchor.dataset.dpcIndex = String(entry.index)
           anchor.textContent = entry.title
           block.appendChild(anchor)
         })
+        // The markers are gone once rebuilt; the attribute above keeps re-scans stable.
         block.setAttribute('data-dpc-source-run', 'true')
       }
+    }
+
+    /**
+     * The site icon for one source, falling back to nothing when it cannot load.
+     * @param {string} href - the source URL.
+     * @returns {Element} the icon element.
+     */
+    function sourceIcon (href) {
+      const icon = document.createElement('img')
+      icon.className = 'dpc-src-favicon'
+      icon.alt = ''
+      icon.loading = 'lazy'
+      try {
+        icon.src = new URL(href).origin + '/favicon.ico'
+      } catch {
+        icon.dataset.dpcMissing = 'true'
+      }
+      icon.addEventListener('error', () => {
+        icon.dataset.dpcMissing = 'true'
+        icon.removeAttribute('src')
+      })
+      return icon
     }
 
     /**
