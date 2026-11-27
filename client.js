@@ -1233,7 +1233,10 @@ window.__ModuleLoader__.load({
     function stampBareCitations (known) {
       if (typeof document === 'undefined' || typeof NodeFilter === 'undefined') return
       const entries = known === undefined ? sourceEntries() : known
-      if (entries.length === 0) return
+      // The model no longer writes a source list, so the ledger (or the turn's search
+      // results) is normally the only place a number can be resolved. Chips are still
+      // created here and linked later by applySourceSections.
+      if (entries.length === 0 && ledgerCache.sources.length === 0 && turnSources.size === 0) return
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null)
       let budget = 8000
       let node = walker.nextNode()
@@ -1252,7 +1255,6 @@ window.__ModuleLoader__.load({
         // Without any source list there is nothing to point at, and rewriting arbitrary
         // text would put chips in places like the sidebar's titles. Deliberately not
         // marked: during streaming the list is written after the prose.
-        if (entries.length === 0) continue
         const fragment = document.createDocumentFragment()
         let cursor = 0
         let match = pattern.exec(value)
@@ -1709,6 +1711,9 @@ window.__ModuleLoader__.load({
             chip.dataset.dpcUrl = target.url
             if (typeof target.title === 'string' && target.title !== '') chip.dataset.dpcTitle = target.title
             chip.removeAttribute('data-dpc-bare')
+            chip.removeAttribute('data-dpc-pinned')
+            chip.removeAttribute('data-dpc-shown')
+            pinChip(chip, false, String(value))
           }
           // The list itself now lives in the side panel, not at the end of the answer.
           for (const stale of body.querySelectorAll('.dpc-sources')) stale.remove()
