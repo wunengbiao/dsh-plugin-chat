@@ -143,3 +143,5 @@ DSH 默认是一个编码工作台：新建会话要绑一个工作区目录，A
 
 **按钮直接长在宿主标签行里**：浮层定位和宿主排版的缝隙（省略号重叠、基线差几像素）靠算术对不齐，所以改成把 `<button class="dpc-src-btn">` **插入宿主 `[class*="tabs"]` 行**（`viewTabs` 之后、`.views` 之前），由宿主的 flex 布局负责间距与垂直对齐；宿主重渲染把它抹掉后，下一轮扫描会重新插回去；切到写代码模式则移除。按钮样式改用一份独立的 `<style id="dsh-plugin-chat-sources-style">` 注入 `head`（不再依赖抽屉渲染），否则关闭状态会退回浏览器默认按钮样式（灰底方框）。
 
+**纯文字 + 像素级对齐**：按钮不再有边框/底色/焦点圈（`border:0`、`background:transparent`、`:focus{outline:none}`，hover 只变色），点击后也不会出现默认焦点框。对齐不再靠手写数值，而是**读一个真实页签的 computed style**（height / padding / margin / line-height / font-size / font-weight / align-self / box-sizing）原样套到按钮上——这样宿主怎么改排版都跟着走。实测按钮文字与「统计」文字的垂直中心都是 58.3px，误差 0。
+

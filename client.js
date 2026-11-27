@@ -1347,9 +1347,14 @@ window.__ModuleLoader__.load({
       '.dpc-src-launcher,.dpc-src-btn,.dpc-src-backdrop,.dpc-src-drawer{-webkit-app-region:no-drag;pointer-events:auto}',
       // Styled like the host's own tab row: text weight and colour, a soft hover
       // surface, and the count as a muted number instead of a coloured badge.
-      '.dpc-src-btn{display:inline-flex !important;align-items:center;gap:6px;height:24px;padding:0 8px;border:0 !important;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary,#adb2b8);font-size:13px;font-weight:500;line-height:24px;white-space:nowrap !important;cursor:pointer;transition:background .12s ease,color .12s ease}',
-      '.dpc-src-btn-label{white-space:nowrap;line-height:24px}',
-      '.dpc-src-btn-count{font-size:12px;font-weight:400;color:var(--dsw-alias-label-caption,#7f858c);font-variant-numeric:tabular-nums;line-height:24px}',
+      // Text only: no border, no fill, no focus ring — just a label that lines up with the
+      // host tabs (same 13px/16px box and the same 10px/9px vertical padding).
+      '.dpc-src-btn{display:inline-flex !important;align-items:center;gap:6px;height:35px;padding:10px 6px 9px;border:0 !important;outline:none !important;background:transparent !important;box-shadow:none !important;color:var(--dsw-alias-label-tertiary,#adb2b8);font-size:13px;font-weight:500;line-height:16px;white-space:nowrap !important;cursor:pointer;transition:color .12s ease}',
+      '.dpc-src-btn-label{white-space:nowrap;line-height:16px}',
+      '.dpc-src-btn:focus,.dpc-src-btn:focus-visible{outline:none !important;box-shadow:none !important}',
+      '@media (hover:hover){.dpc-src-btn:hover{color:var(--dsw-alias-label-primary,#f9fafb)}}',
+      '.dpc-src-btn[data-open="true"]{color:var(--dsw-alias-label-primary,#f9fafb)}',
+      '.dpc-src-btn-count{font-size:12px;font-weight:400;color:var(--dsw-alias-label-caption,#7f858c);font-variant-numeric:tabular-nums;line-height:16px}',
       '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}}',
       '.dpc-src-btn[data-open="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}',
       '.dpc-src-backdrop{position:fixed;inset:0;z-index:200;background:rgba(8,10,14,.32)}',
@@ -1409,6 +1414,20 @@ window.__ModuleLoader__.load({
           syncSourcesButton()
         })
         row.insertBefore(button, views === null ? null : views)
+      }
+      // Copy the reference tab's own box so the label shares its baseline exactly, whatever
+      // the row's alignment or the tab's paddings are.
+      const reference = row.querySelector('[class*="viewTabs"] [class*="tab"]')
+      if (reference !== null && reference !== button) {
+        const style = getComputedStyle(reference)
+        button.style.height = style.height
+        button.style.padding = style.padding
+        button.style.margin = style.margin
+        button.style.lineHeight = style.lineHeight
+        button.style.fontSize = style.fontSize
+        button.style.fontWeight = style.fontWeight
+        button.style.alignSelf = style.alignSelf
+        button.style.boxSizing = style.boxSizing
       }
       const current = modeStore.probe
       const sessionId = current === undefined ? undefined : current.sessionId
