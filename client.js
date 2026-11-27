@@ -1498,7 +1498,7 @@ window.__ModuleLoader__.load({
       }
       const current = modeStore.probe
       const sessionId = current === undefined ? undefined : current.sessionId
-      const count = sessionId !== undefined && ledgerCache.sessionId === sessionId ? ledgerCache.sources.length : 0
+      const count = sessionId !== undefined && ledgerCache.sessionId === sessionId ? panelSources().length : 0
       const label = '来源' + (count === 0 ? '' : ' ' + count)
       if ((button.textContent || '') !== label) button.textContent = label
       button.dataset.open = sourcesPanel.open ? 'true' : 'false'
@@ -1512,6 +1512,7 @@ window.__ModuleLoader__.load({
       return function SourcesDrawer () {
         const [, bump] = React.useState(0)
         React.useEffect(() => sourcesPanel.subscribe(() => bump(count => count + 1)), [])
+        React.useEffect(() => sourcesRevision.subscribe(() => bump(count => count + 1)), [])
         const current = modeStore.probe
         const sessionId = current === undefined ? undefined : current.sessionId
         const open = sourcesPanel.open && sourcesPanel.forSession === sessionId
@@ -1526,7 +1527,7 @@ window.__ModuleLoader__.load({
           return () => window.removeEventListener('keydown', onKey)
         }, [open, sessionId])
         if (!open) return null
-        const sources = ledgerCache.sources
+        const sources = panelSources()
         return h('div', { className: 'dpc-src-layer' },
           h('style', null, SOURCES_CSS),
           h('div', { className: 'dpc-src-backdrop', onClick: () => sourcesPanel.set(false) }),
@@ -1537,7 +1538,7 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', className: 'dpc-src-close', title: '关闭', onClick: () => sourcesPanel.set(false) }, '✕')),
             h('div', { className: 'dpc-src-body' },
               sources.length === 0
-                ? h('div', { className: 'dpc-src-empty' }, '这次回答还没有登记引用来源。')
+                ? h('div', { className: 'dpc-src-empty' }, '这次回答还没有引用任何来源。')
                 : sources.map(item => h('a', {
                   key: item.index + ':' + item.url,
                   className: 'dpc-src-item',
@@ -1615,6 +1616,47 @@ window.__ModuleLoader__.load({
     const ledgerCache = { sessionId: undefined, sources: [], at: 0 }
 
     /**
+     * Numbers the transcript resolved on its own (search results, when the model never
+     * registered its citations in the ledger). The drawer lists these too, otherwise an
+     * answer full of working citations would report "no sources".
+     */
+    const resolvedSources = new Map()
+
+    /** Revision counter so the button and the drawer redraw when the list changes. */
+    const sourcesRevision = {
+      value: 0,
+      listeners: new Set(),
+      bump () {
+        this.value += 1
+        for (const listener of this.listeners) listener()
+      },
+      /**
+       * @param {() => void} listener - re-render callback.
+       * @returns {() => void} unsubscribe.
+       */
+      subscribe (listener) {
+        this.listeners.add(listener)
+        return () => { this.listeners.delete(listener) }
+      },
+    }
+
+    /**
+     * The sources to show for the displayed conversation: the ledger first, then whatever
+     * the transcript resolved, in citation order.
+     * @returns {{ index: number, title: string, url: string }[]} one entry per number.
+     */
+    function panelSources () {
+      const merged = new Map()
+      for (const item of ledgerCache.sources) {
+        if (item !== undefined && typeof item.index === 'number') merged.set(item.index, item)
+      }
+      for (const [index, item] of resolvedSources) {
+        if (!merged.has(index)) merged.set(index, item)
+      }
+      return [...merged.values()].sort((left, right) => left.index - right.index)
+    }
+
+    /**
      * Refresh the ledger for one conversation, at most every two seconds.
      * @param {string} sessionId - the displayed conversation.
      */
@@ -1625,6 +1667,7 @@ window.__ModuleLoader__.load({
         ledgerCache.sessionId = sessionId
         ledgerCache.sources = []
         ledgerCache.at = 0
+        resolvedSources.clear()
       }
       if (force !== true && now - ledgerCache.at < 2000) return
       ledgerCache.at = now
@@ -1663,6 +1706,7 @@ window.__ModuleLoader__.load({
         else steps.push({ step: Number(match[2]), body })
       }
       const groups = [...turns.entries()]
+      const before = panelSources().map(item => item.index + ':' + item.url).join('|')
       // The node key's first field is not the stream's turn number, so answers are
       // aligned with the turns from the newest one backwards.
       const base = startedTurns.length - groups.length
@@ -1708,12 +1752,15 @@ window.__ModuleLoader__.load({
             chip.removeAttribute('data-dpc-pinned')
             chip.removeAttribute('data-dpc-shown')
             pinChip(chip, false, String(value))
+            resolvedSources.set(value, { index: value, title: target.title === '' ? target.url : target.title, url: target.url })
           }
           // The list itself now lives in the side panel, not at the end of the answer.
           for (const stale of body.querySelectorAll('.dpc-sources')) stale.remove()
           hideSourceSection(body)
         }
       }
+      const after = panelSources().map(item => item.index + ':' + item.url).join('|')
+      if (after !== before) sourcesRevision.bump()
     }
 
     /**
