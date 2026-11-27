@@ -876,6 +876,9 @@ window.__ModuleLoader__.load({
       '.dpc-cite[data-dpc-wide="3"]::after{font-size:7px;letter-spacing:-.4px}',
       '.dpc-cite[data-dpc-bare="true"]{cursor:default;color:var(--dsw-alias-label-tertiary,#8a8f98)}',
       '@media (hover:hover){.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.3));color:var(--dsw-alias-label-primary,inherit)}}',
+      // A normalised source entry: the title is the link, styled as text.
+      '.dpc-src-title{color:inherit !important;text-decoration:none !important;border-bottom:0 !important}',
+      '@media (hover:hover){.dpc-src-title:hover{text-decoration:underline !important}}',
     ]
 
     /**
@@ -1099,6 +1102,60 @@ window.__ModuleLoader__.load({
     }
 
 
+
+    /**
+     * Render source entries as "chip + clickable title".
+     *
+     * Answers often link the bare URL and leave the title as plain text
+     * (`[1] Title — https://…`). Each block that consists only of such entries is
+     * rewritten to keep the marker and the title, with the title carrying the link, so
+     * the list reads `① Title` and a click opens the source. A block that also holds
+     * other content is left to the line-break pass.
+     * @param {Array<object>} entries - cited sources in document order.
+     */
+    function formatSourceEntries (entries) {
+      if (typeof document === 'undefined') return
+      const byBlock = new Map()
+      for (const entry of entries) {
+        const element = entry.element
+        const block = element === undefined ? null : element.closest('li,p')
+        if (block === null || block === undefined) continue
+        if (block.closest('.dpc-mode') !== null) continue
+        const list = byBlock.get(block)
+        if (list === undefined) byBlock.set(block, [entry])
+        else list.push(entry)
+      }
+      for (const [block, list] of byBlock) {
+        if (block.querySelector('.dpc-src-title') !== null) continue
+        const text = (block.textContent || '').trim()
+        // Only a block that starts with a marker is a source entry.
+        if (!/^\[?\d{1,3}\]?\s*[.、,:：]?\s/.test(text)) continue
+        const links = [...block.querySelectorAll('a[href]')].filter(link => !link.classList.contains('dpc-cite'))
+        // Every link must belong to an entry, otherwise the block carries prose too.
+        if (links.length !== list.length) continue
+        const usable = list.every(entry => {
+          const title = entry.title === undefined ? '' : entry.title
+          return title !== '' && !/^https?:\/\//i.test(title)
+        })
+        if (!usable) continue
+        const ordered = [...list].sort((left, right) => (
+          (left.element.compareDocumentPosition(right.element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 ? -1 : 1
+        ))
+        block.textContent = ''
+        ordered.forEach((entry, position) => {
+          if (position > 0) block.appendChild(document.createElement('br'))
+          block.appendChild(document.createTextNode('[' + entry.index + '] '))
+          const anchor = document.createElement('a')
+          anchor.className = 'dpc-src-title'
+          anchor.setAttribute('href', entry.href)
+          anchor.setAttribute('rel', 'noopener noreferrer')
+          anchor.textContent = entry.title
+          block.appendChild(anchor)
+        })
+        block.setAttribute('data-dpc-source-run', 'true')
+      }
+    }
+
     /**
      * Keep a source run on separate lines.
      *
@@ -1258,6 +1315,8 @@ window.__ModuleLoader__.load({
               // Normalise first: the bare pass replaces the `[n]` markers with chips,
               // after which the run can no longer be recognised.
               normalizeSourceRuns()
+              const listed = sourceEntries()
+              formatSourceEntries(listed)
               const entries = sourceEntries()
               stampCitations(entries)
               stampBareCitations(entries)
