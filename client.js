@@ -169,12 +169,6 @@ window.__ModuleLoader__.load({
     const CITATION_TEXT = /^\[\d{1,3}\]$/
     /** Sprite id of the host's "add workspace" header button icon. */
     const ADD_WORKSPACE_ICON = 'dsw-icon-project-add-outline-regular'
-    /** Replacement glyph for chat mode: a speech bubble with a plus. */
-    const NEW_CHAT_MASK = 'data:image/svg+xml;base64,' + btoa(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">'
-      + '<path d="M2.4 3.6h11.2c.5 0 .9.4.9.9v4.9c0 .5-.4.9-.9.9H6.7L4.2 12.9v-2.6H2.4c-.5 0-.9-.4-.9-.9V4.5c0-.5.4-.9.9-.9z"/>'
-      + '<path d="M8 5.2v2.9M6.6 6.6h2.9"/></svg>',
-    )
     const EMPTY_IDS = []
 
     const zh = {
@@ -1895,13 +1889,8 @@ window.__ModuleLoader__.load({
             '[data-sidebar-workspace-header] [class*="sectionLabel"]::after'
             + "{content:'" + t('sidebarTitle') + "';position:absolute;left:0;top:0;height:100%;display:flex;align-items:center;white-space:nowrap;font:inherit;line-height:20px;color:var(--dsw-alias-label-tertiary,rgb(173,178,184))}",
           )
-          const addButton = '[data-sidebar-workspace-header] button:has(svg[data-icon="' + ADD_WORKSPACE_ICON + '"])'
-          rules.push(addButton + ' svg{display:none !important}')
-          rules.push(
-            addButton + "::after{content:'';display:block;width:16px;height:16px;background-color:currentColor;"
-            + '-webkit-mask:url("' + NEW_CHAT_MASK + '") center / 16px 16px no-repeat;'
-            + 'mask:url("' + NEW_CHAT_MASK + '") center / 16px 16px no-repeat}',
-          )
+          // The header keeps the host's own icon, so chat mode and code mode look the same;
+          // only its label and its action differ.
           // Without the workspace level there is no indentation to carry, so the
           // rows give up the depth padding and the leading status cell and line up
           // with the New-session row above them.
