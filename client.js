@@ -2042,20 +2042,47 @@ window.__ModuleLoader__.load({
         // `aria-expanded` keeps this from toggling it back and forth.
         React.useEffect(() => {
           if (mode !== 'chat' || chatWorkspaceId === undefined) return undefined
-          let timer = 0
-          let attempts = 0
+          // The workspace row itself is the collapse toggle; in chat mode it is hidden,
+          // so keep it expanded for as long as chat mode lasts. A mutation watcher runs
+          // it again whenever the host re-renders the tree.
           const expand = () => {
             if (modeStore.mode() !== 'chat') return
+            const workspace = document.querySelector('[data-row-key="workspace:' + chatWorkspaceId + '"]')
+            if (workspace !== null && workspace.getAttribute('aria-expanded') === 'false') workspace.click()
             const row = document.querySelector('[data-row-key="overflow:' + chatWorkspaceId + '"]')
-            if (row === null) return
-            if (row.getAttribute('aria-expanded') === 'true') return
-            row.click()
-            attempts += 1
-            if (attempts < 4) timer = window.setTimeout(expand, 250)
+            if (row !== null && row.getAttribute('aria-expanded') !== 'true') row.click()
           }
           expand()
+          if (typeof MutationObserver !== 'function') return undefined
+          const observer = new MutationObserver(() => expand())
+          observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded'] })
+          return () => observer.disconnect()
+        })
+
+        // A sidebar that was collapsed when the list was measured keeps a stale height and
+        // shows only a handful of rows until something forces a re-measure (clicking a row
+        // does). Nudge the layout whenever the sidebar comes back.
+        React.useEffect(() => {
+          if (mode !== 'chat') return undefined
+          const sidebar = document.querySelector('[data-sidebar-toggle]')
+          if (sidebar === null || typeof ResizeObserver !== 'function') return undefined
+          let wasNarrow = sidebar.getBoundingClientRect().width < 200
+          let frame = 0
+          const observer = new ResizeObserver(() => {
+            const narrow = sidebar.getBoundingClientRect().width < 200
+            if (narrow === wasNarrow) return
+            wasNarrow = narrow
+            if (narrow) return
+            if (frame !== 0) return
+            frame = window.setTimeout(() => {
+              frame = 0
+              window.dispatchEvent(new Event('resize'))
+            }, 60)
+          })
+          observer.observe(sidebar)
           return () => {
-            if (timer !== 0) window.clearTimeout(timer)
+            observer.disconnect()
+            if (frame !== 0) window.clearTimeout(frame)
           }
         })
 

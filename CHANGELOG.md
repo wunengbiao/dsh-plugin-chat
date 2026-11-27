@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- Chat mode keeps its session group expanded (the hidden workspace row is re-expanded whenever the host collapses it) and nudges a re-measure when the sidebar opens, so the list no longer shows a short preview until a row is clicked.
 - The sources drawer and the 来源 count now include the citations the transcript resolved from search results, not only the ledger, so an answer with working citations no longer reports "0 条".
 - The chat sidebar keeps the host's own add-workspace icon (the masked speech-bubble glyph is gone), so chat mode and code mode show the same icon; only its label changes.
 - Citations render on open again: the bare-citation pass no longer requires a model-written source list (which the model stopped producing), so chips appear without touching the sources drawer.
