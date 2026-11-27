@@ -878,8 +878,11 @@ window.__ModuleLoader__.load({
       '@media (hover:hover){.dpc-cite:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.3));color:var(--dsw-alias-label-primary,inherit)}}',
       // A normalised source entry: ordinal, site icon, then the title as the link.
       '.dpc-src-index{color:var(--dsw-alias-label-tertiary,#8a8f98);font-variant-numeric:tabular-nums}',
-      '.dpc-src-favicon{display:inline-block;width:14px;height:14px;margin:0 6px 0 1px;border-radius:3px;object-fit:contain;vertical-align:-2px;opacity:.9}',
-      '.dpc-src-favicon[data-dpc-missing="true"]{display:none}',
+      '.dpc-src-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin:0 6px 0 1px;vertical-align:-2px;color:var(--dsw-alias-label-link,#7aa7e0)}',
+      '.dpc-src-icon>svg{display:block;width:14px;height:14px}',
+      '.dpc-src-favicon{display:none;width:14px;height:14px;border-radius:3px;object-fit:contain}',
+      '.dpc-src-icon[data-dpc-loaded="true"]>svg{display:none}',
+      '.dpc-src-icon[data-dpc-loaded="true"]>.dpc-src-favicon{display:block}',
       '.dpc-src-title{color:inherit !important;text-decoration:none !important;border-bottom:0 !important}',
       '@media (hover:hover){.dpc-src-title:hover{text-decoration:underline !important}}',
     ]
@@ -1205,26 +1208,45 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** Glyph shown when a site has no usable favicon: a link globe. */
+    const GLOBE_GLYPH = ['M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8Z', 'M8 1.8c1.7 1.7 2.6 3.9 2.6 6.2S9.7 12.5 8 14.2C6.3 12.5 5.4 10.3 5.4 8S6.3 3.5 8 1.8Z', 'M1.9 8h12.2']
+
     /**
-     * The site icon for one source, falling back to nothing when it cannot load.
+     * The site icon for one source, with a globe when the site has no favicon.
      * @param {string} href - the source URL.
      * @returns {Element} the icon element.
      */
     function sourceIcon (href) {
-      const icon = document.createElement('img')
-      icon.className = 'dpc-src-favicon'
-      icon.alt = ''
-      icon.loading = 'lazy'
-      try {
-        icon.src = new URL(href).origin + '/favicon.ico'
-      } catch {
-        icon.dataset.dpcMissing = 'true'
+      const wrapper = document.createElement('span')
+      wrapper.className = 'dpc-src-icon'
+      const fallback = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      fallback.setAttribute('viewBox', '0 0 16 16')
+      fallback.setAttribute('fill', 'none')
+      fallback.setAttribute('stroke', 'currentColor')
+      fallback.setAttribute('stroke-width', '1.15')
+      fallback.setAttribute('stroke-linecap', 'round')
+      fallback.setAttribute('aria-hidden', 'true')
+      for (const d of GLOBE_GLYPH) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        path.setAttribute('d', d)
+        fallback.appendChild(path)
       }
-      icon.addEventListener('error', () => {
-        icon.dataset.dpcMissing = 'true'
-        icon.removeAttribute('src')
+      const image = document.createElement('img')
+      image.className = 'dpc-src-favicon'
+      image.alt = ''
+      image.addEventListener('load', () => { wrapper.dataset.dpcLoaded = 'true' })
+      image.addEventListener('error', () => {
+        wrapper.dataset.dpcLoaded = 'false'
+        image.removeAttribute('src')
       })
-      return icon
+      try {
+        image.src = new URL(href).origin + '/favicon.ico'
+      } catch {
+        wrapper.dataset.dpcLoaded = 'false'
+      }
+      wrapper.appendChild(fallback)
+      wrapper.appendChild(image)
+      return wrapper
     }
 
     /**
