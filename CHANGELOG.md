@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- The badge is drawn as an inline SVG circle (viewBox 18, circle r=9, text number), so no stylesheet can turn it into a rounded square or an ellipse.
 - Chip geometry, colours and the number itself are now written inline (real text, not a generated pseudo-element), so a window still holding an old stylesheet cannot stretch the badge into an ellipse.
 - Citation chips are a fixed 18x18 box with no padding, so they are perfect circles (the auto-width plus padding box had stretched them into ellipses for some digits).
 - Inline citation chips are inverted against the page (dark on light, light on dark), 18px and perfectly round.

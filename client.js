@@ -933,9 +933,11 @@ window.__ModuleLoader__.load({
       // style, so the layout properties here have to win outright.
       // Inverted against the page: dark chip on a light theme, light chip on a dark theme,
       // slightly larger and perfectly round.
-      '.dpc-cite{display:inline-flex !important;align-items:center;justify-content:center;box-sizing:border-box;width:18px !important;height:18px !important;min-width:18px;margin:0 3px !important;padding:0 !important;border:0 !important;border-radius:999px !important;background:var(--dsw-alias-label-primary,#111) !important;color:var(--dsw-alias-bg-base,#fff) !important;font-size:0 !important;line-height:1 !important;text-decoration:none !important;position:relative;top:-2px !important;vertical-align:baseline !important;overflow:hidden;flex:none;transition:opacity .12s ease}',
-      '.dpc-cite>svg{display:none !important}',
-      '.dpc-cite[data-dpc-bare="true"]{background:var(--dsw-alias-label-tertiary,#8a8f98) !important;color:var(--dsw-alias-bg-base,#fff) !important;opacity:.72;cursor:default}',
+      // The badge picture is the SVG inside the chip; this class only removes inherited
+      // link decoration. Shape and colour live in the inline style and the SVG.
+      '.dpc-cite{text-decoration:none !important;background:none !important;border:0 !important;overflow:visible !important}',
+      '.dpc-cite>svg{display:inline-block !important;overflow:visible !important}',
+      '.dpc-cite[data-dpc-bare="true"]{cursor:default;opacity:.72}',
       '@media (hover:hover){.dpc-cite:hover{opacity:.82}}',
       // A normalised source entry: ordinal, site icon, then the title as the link.
       '.dpc-src-index{color:var(--dsw-alias-label-tertiary,#8a8f98);font-variant-numeric:tabular-nums}',
@@ -963,52 +965,72 @@ window.__ModuleLoader__.load({
      * @param {Array<object>} entries - cited sources in document order.
      */
 
-    /**
-     * Pin a chip's geometry inline.
-     *
-     * A stylesheet can be stale in a window that has not reloaded yet (an older build drew
-     * the chip as an auto-width pill, i.e. an ellipse); inline `!important` wins over any
-     * stylesheet, so the badge is a circle either way.
-     */
+    /** Inline style of one chip: the picture is an SVG circle, so CSS cannot reshape it. */
     const CHIP_STYLE = [
+      'display:inline-block !important',
       'width:18px !important',
-      'min-width:18px !important',
       'height:18px !important',
+      'min-width:18px !important',
       'padding:0 !important',
+      'margin:0 2px !important',
       'border:0 !important',
-      'border-radius:999px !important',
-      'display:inline-flex !important',
-      'align-items:center !important',
-      'justify-content:center !important',
-      'box-sizing:border-box !important',
-      'overflow:hidden !important',
-      'font-weight:600 !important',
-      'letter-spacing:0 !important',
+      'border-radius:0 !important',
+      'background:none !important',
+      'box-shadow:none !important',
+      'overflow:visible !important',
       'text-decoration:none !important',
-      'line-height:1 !important',
-      'text-align:center !important',
-      'vertical-align:baseline !important',
+      'line-height:0 !important',
+      'font-size:0 !important',
+      'vertical-align:-3px',
       'position:relative',
-      'top:-2px',
     ].join(';')
 
     /**
-     * Stamp the inline geometry onto one chip.
+     * Draw one citation badge.
+     *
+     * The badge is a real SVG circle inside an 18px box, so no stylesheet (least of all an
+     * older build that used `border-radius` on a content-sized box) can turn it into an
+     * ellipse or a rounded square.
      * @param {Element} chip - the citation anchor.
      * @param {boolean} bare - an unresolved number, drawn muted.
+     * @param {string} label - the number to show.
      */
     function pinChip (chip, bare, label) {
-      const text = label === undefined ? (chip.dataset.dpcCite ?? '') : String(label)
-      const size = text.length >= 3 ? 7.5 : text.length === 2 ? 8.5 : 10
-      const colours = bare === true
-        ? 'background:var(--dsw-alias-label-tertiary,#8a8f98) !important;color:var(--dsw-alias-bg-base,#fff) !important;opacity:.72'
-        : 'background:var(--dsw-alias-label-primary,#111) !important;color:var(--dsw-alias-bg-base,#fff) !important'
+      const text = label === undefined || label === null ? (chip.dataset.dpcCite ?? '') : String(label)
       if (chip.getAttribute('data-dpc-pinned') !== 'true') {
-        chip.setAttribute('style', CHIP_STYLE + ';font-size:' + size + 'px !important;' + colours)
+        chip.setAttribute('style', CHIP_STYLE)
         chip.setAttribute('data-dpc-pinned', 'true')
       }
-      // The number is real text, so the badge survives a stylesheet that has not reloaded.
-      if (text !== '' && chip.textContent !== text) chip.textContent = text
+      if (chip.getAttribute('data-dpc-shown') === text) return
+      chip.setAttribute('data-dpc-shown', text)
+      chip.setAttribute('aria-label', text === '' ? '引用' : '引用 ' + text)
+      const ns = 'http://www.w3.org/2000/svg'
+      if (typeof chip.replaceChildren === 'function') chip.replaceChildren()
+      else chip.textContent = ''
+      const svg = document.createElementNS(ns, 'svg')
+      svg.setAttribute('viewBox', '0 0 18 18')
+      svg.setAttribute('width', '18')
+      svg.setAttribute('height', '18')
+      svg.setAttribute('aria-hidden', 'true')
+      const circle = document.createElementNS(ns, 'circle')
+      circle.setAttribute('cx', '9')
+      circle.setAttribute('cy', '9')
+      circle.setAttribute('r', '9')
+      circle.setAttribute('fill', bare === true ? 'var(--dsw-alias-label-tertiary,#8a8f98)' : 'var(--dsw-alias-label-primary,#111)')
+      const number = document.createElementNS(ns, 'text')
+      number.setAttribute('x', '9')
+      number.setAttribute('y', '9.4')
+      number.setAttribute('text-anchor', 'middle')
+      number.setAttribute('dominant-baseline', 'middle')
+      number.setAttribute('font-size', text.length >= 3 ? '7.5' : text.length === 2 ? '8.5' : '10')
+      number.setAttribute('font-weight', '600')
+      number.setAttribute('font-family', 'inherit')
+      number.setAttribute('fill', 'var(--dsw-alias-bg-base,#fff)')
+      number.textContent = text
+      svg.appendChild(circle)
+      svg.appendChild(number)
+      chip.appendChild(svg)
+      if (bare === true) chip.setAttribute('data-dpc-bare', 'true')
     }
 
     function stampCitations (entries) {
