@@ -1284,23 +1284,35 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Append a fixed source section to every answer that cites something.
+     * Append a fixed source section at the end of every answer that cites something.
      *
-     * The model's own list varies in wording and layout, so the section is drawn here
-     * from the conversation's citation ledger instead: numbers the answer used, each
-     * with the site icon and its title. A list the model did write is hidden.
+     * One answer is rendered as several step bodies, so the numbers are collected over
+     * all of them and the section is drawn on the last one — otherwise it lands in the
+     * middle of the reply. A list the model wrote itself is hidden.
      */
     function applySourceSections () {
       if (typeof document === 'undefined') return
       const sources = ledgerCache.sources
       if (sources.length === 0) return
+      const turns = new Map()
       for (const node of document.querySelectorAll('[data-chat-node-key]')) {
+        const key = node.getAttribute('data-chat-node-key') ?? ''
+        const match = /^(\d+):assistant-step(\d+):/.exec(key)
+        if (match === null) continue
         const body = node.querySelector('[data-text-interaction-source], div[class*="_markdown_"]')
         if (body === null) continue
+        const steps = turns.get(match[1])
+        if (steps === undefined) turns.set(match[1], [{ step: Number(match[2]), body }])
+        else steps.push({ step: Number(match[2]), body })
+      }
+      for (const steps of turns.values()) {
+        steps.sort((left, right) => left.step - right.step)
         const numbers = []
-        for (const chip of body.querySelectorAll('.dpc-cite')) {
-          const value = Number(chip.dataset === undefined ? Number.NaN : chip.dataset.dpcCite)
-          if (Number.isFinite(value) && value > 0 && !numbers.includes(value)) numbers.push(value)
+        for (const { body } of steps) {
+          for (const chip of body.querySelectorAll('.dpc-cite')) {
+            const value = Number(chip.dataset === undefined ? Number.NaN : chip.dataset.dpcCite)
+            if (Number.isFinite(value) && value > 0 && !numbers.includes(value)) numbers.push(value)
+          }
         }
         if (numbers.length === 0) continue
         const used = []
@@ -1309,13 +1321,20 @@ window.__ModuleLoader__.load({
           if (found !== undefined) used.push(found)
         }
         if (used.length === 0) continue
-        hideSourceSection(body)
+        for (const { body } of steps) hideSourceSection(body)
+        const target = steps[steps.length - 1].body
         const signature = used.map(item => item.index + ':' + item.url).join('|')
-        if (body.dataset.dpcSources === signature) continue
-        const previous = body.querySelector('.dpc-sources')
-        if (previous !== null) previous.remove()
-        body.appendChild(renderSourceSection(used))
-        body.dataset.dpcSources = signature
+        for (const { body } of steps) {
+          for (const stale of body.querySelectorAll('.dpc-sources')) {
+            if (body !== target || stale.dataset.signature !== signature) stale.remove()
+          }
+        }
+        const current = target.querySelector('.dpc-sources')
+        if (current !== null && current.dataset.signature === signature) continue
+        if (current !== null) current.remove()
+        const section = renderSourceSection(used)
+        section.dataset.signature = signature
+        target.appendChild(section)
       }
     }
 
