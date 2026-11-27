@@ -883,6 +883,11 @@ window.__ModuleLoader__.load({
       '.dpc-src-favicon{display:none;width:14px;height:14px;border-radius:3px;object-fit:contain}',
       '.dpc-src-icon[data-dpc-loaded="true"]>svg{display:none}',
       '.dpc-src-icon[data-dpc-loaded="true"]>.dpc-src-favicon{display:block}',
+      '.dpc-sources{margin-top:22px}',
+      '.dpc-sources-title{font-size:15px;line-height:22px;font-weight:600;color:var(--dsw-alias-label-primary,inherit);margin:0 0 8px}',
+      '.dpc-sources-list{display:flex;flex-direction:column;gap:6px}',
+      '.dpc-sources-row{display:flex;align-items:center;font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary,inherit)}',
+      '.dpc-sources-row .dpc-src-index{min-width:16px;margin-right:2px}',
       '.dpc-src-title{color:inherit !important;text-decoration:none !important;border-bottom:0 !important}',
       '@media (hover:hover){.dpc-src-title:hover{text-decoration:underline !important}}',
     ]
@@ -1249,6 +1254,127 @@ window.__ModuleLoader__.load({
       return wrapper
     }
 
+
+    /** Route that returns one conversation's citation ledger. */
+    const CITATIONS_ROUTE = '/dsh-plugin-chat/v1/citations'
+    /** Heading text a model-written source section uses. */
+    const SOURCE_HEADING = /^(参\s*考\s*来\s*源|来\s*源|引\s*用\s*来\s*源|参\s*考\s*资\s*料|sources?|references?)$/i
+
+    /** Ledger of the displayed conversation, fetched from the Host half. */
+    const ledgerCache = { sessionId: undefined, sources: [], at: 0 }
+
+    /**
+     * Refresh the ledger for one conversation, at most every two seconds.
+     * @param {string} sessionId - the displayed conversation.
+     */
+    function refreshLedger (sessionId) {
+      const now = Date.now()
+      if (ledgerCache.sessionId === sessionId && now - ledgerCache.at < 2000) return
+      ledgerCache.sessionId = sessionId
+      ledgerCache.at = now
+      void fetch(CITATIONS_ROUTE + '?session=' + encodeURIComponent(sessionId), { headers: { accept: 'application/json' } })
+        .then(response => (response.ok ? response.json() : undefined))
+        .then(payload => {
+          if (payload === undefined || payload === null || payload.ok !== true) return
+          if (ledgerCache.sessionId !== sessionId) return
+          ledgerCache.sources = Array.isArray(payload.sources) ? payload.sources : []
+          ledgerCache.at = Date.now()
+          applySourceSections()
+        }, () => {})
+    }
+
+    /**
+     * Append a fixed source section to every answer that cites something.
+     *
+     * The model's own list varies in wording and layout, so the section is drawn here
+     * from the conversation's citation ledger instead: numbers the answer used, each
+     * with the site icon and its title. A list the model did write is hidden.
+     */
+    function applySourceSections () {
+      if (typeof document === 'undefined') return
+      const sources = ledgerCache.sources
+      if (sources.length === 0) return
+      for (const node of document.querySelectorAll('[data-chat-node-key]')) {
+        const body = node.querySelector('[data-text-interaction-source], div[class*="_markdown_"]')
+        if (body === null) continue
+        const numbers = []
+        for (const chip of body.querySelectorAll('.dpc-cite')) {
+          const value = Number(chip.dataset === undefined ? Number.NaN : chip.dataset.dpcCite)
+          if (Number.isFinite(value) && value > 0 && !numbers.includes(value)) numbers.push(value)
+        }
+        if (numbers.length === 0) continue
+        const used = []
+        for (const number of numbers) {
+          const found = sources.find(item => item !== undefined && item.index === number)
+          if (found !== undefined) used.push(found)
+        }
+        if (used.length === 0) continue
+        hideSourceSection(body)
+        const signature = used.map(item => item.index + ':' + item.url).join('|')
+        if (body.dataset.dpcSources === signature) continue
+        const previous = body.querySelector('.dpc-sources')
+        if (previous !== null) previous.remove()
+        body.appendChild(renderSourceSection(used))
+        body.dataset.dpcSources = signature
+      }
+    }
+
+    /**
+     * Hide a source section the model wrote itself, so the fixed one is the only one.
+     * @param {Element} body - the rendered answer.
+     */
+    function hideSourceSection (body) {
+      const children = [...body.children]
+      for (let index = 0; index < children.length; index += 1) {
+        const child = children[index]
+        const text = (child.textContent || '').trim()
+        if (text === '' || text.length > 12) continue
+        if (!SOURCE_HEADING.test(text.replace(/[：:。.]$/, ''))) continue
+        if (!/^(H[1-6]|P|STRONG|DIV)$/.test(child.tagName)) continue
+        for (let tail = index; tail < children.length; tail += 1) {
+          const node = children[tail]
+          if (node.classList !== undefined && node.classList.contains('dpc-sources')) continue
+          node.style.display = 'none'
+          node.setAttribute('data-dpc-hidden-source', 'true')
+        }
+        return
+      }
+    }
+
+    /**
+     * Build the fixed source section.
+     * @param {Array<{ index: number, title: string, url: string }>} used - cited sources.
+     * @returns {Element} the section.
+     */
+    function renderSourceSection (used) {
+      const section = document.createElement('div')
+      section.className = 'dpc-sources'
+      const title = document.createElement('div')
+      title.className = 'dpc-sources-title'
+      title.textContent = '来源'
+      section.appendChild(title)
+      const list = document.createElement('div')
+      list.className = 'dpc-sources-list'
+      for (const entry of used) {
+        const row = document.createElement('div')
+        row.className = 'dpc-sources-row'
+        const ordinal = document.createElement('span')
+        ordinal.className = 'dpc-src-index'
+        ordinal.textContent = entry.index + '.'
+        row.appendChild(ordinal)
+        row.appendChild(sourceIcon(entry.url))
+        const link = document.createElement('a')
+        link.className = 'dpc-src-title'
+        link.setAttribute('href', entry.url)
+        link.setAttribute('rel', 'noopener noreferrer')
+        link.textContent = entry.title
+        row.appendChild(link)
+        list.appendChild(row)
+      }
+      section.appendChild(list)
+      return section
+    }
+
     /**
      * Keep a source run on separate lines.
      *
@@ -1413,6 +1539,9 @@ window.__ModuleLoader__.load({
               const entries = sourceEntries()
               stampCitations(entries)
               stampBareCitations(entries)
+              const current = modeStore.probe
+              if (current !== undefined && current.sessionId !== undefined) refreshLedger(current.sessionId)
+              applySourceSections()
             }, 400)
             if (frame !== 0) return
             frame = requestAnimationFrame(() => {

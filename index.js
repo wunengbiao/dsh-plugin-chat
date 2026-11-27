@@ -37,6 +37,9 @@ export const INFO_ROUTE = '/dsh-plugin-chat/v1/info'
 /** Save the chat system prompt. */
 export const PROMPT_ROUTE = '/dsh-plugin-chat/v1/system-prompt'
 
+/** Citation ledger of one conversation, for the Client half's source section. */
+export const CITATIONS_ROUTE = '/dsh-plugin-chat/v1/citations'
+
 /** The only global tools a chat Agent may keep: conversation and web research. */
 const CONVERSATIONAL_TOOLS = ['web_search', 'web_fetch', 'ask_user_question']
 
@@ -161,8 +164,8 @@ const DEFAULT_PROMPT = [
   '- 用简体中文、自然、简洁地回答；先给结论，再补必要的细节。',
   '- 需要事实、版本、价格、新闻或外部链接时，用 web_search 检索、用 web_fetch 打开页面核实。',
   '- 引用来源时用带方括号编号的 Markdown 链接：正文写成 [[1]](https://…) 这种形式（不要只写 [1]，也不要留裸链接），按首次引用顺序编号。',
-  '- 编号在整个对话里连续：不因新一轮提问回到 1。检索到新来源后先调用 citation_index 工具登记（action=reserve，按顺序附上 title 与 url），正文和文末「来源」列表都用它返回的编号；只复用已有来源时沿用原编号。',
-  '- 回答末尾加一个「来源」小节，逐条写「编号. [文章标题](链接)」；链接文字一律用文章标题，不要直接贴 URL。',
+  '- 编号在整个对话里连续：不因新一轮提问回到 1。检索到新来源后先调用 citation_index（action=reserve，按顺序附上 title 与 url）登记，正文用返回的编号；只复用已有来源时沿用原编号。',
+  '- 不要在回答里写「来源」「参考来源」等来源列表：文末来源由插件按编号自动生成。检索到新来源后调用 citation_index 登记编号，正文用编号引用即可。',
   '- 你没有文件、shell、编辑或子代理工具，也不要假装执行过它们；如果用户确实要改代码，提醒他切换到「写代码」模式。',
   '- 不确定就说不确定，不要编造来源或数字。',
 ].join('\n')
@@ -710,6 +713,11 @@ function installRoutes (ctx) {
     path: INFO_ROUTE,
     handler: (request, response) => { handleInfo(request, response) },
   })
+  const releaseCitations = webServer.register({
+    kind: 'exact',
+    path: CITATIONS_ROUTE,
+    handler: (request, response) => { handleCitations(request, response) },
+  })
   const releasePrompt = webServer.register({
     kind: 'exact',
     path: PROMPT_ROUTE,
@@ -718,6 +726,7 @@ function installRoutes (ctx) {
   return () => {
     if (typeof releaseInfo === 'function') releaseInfo()
     if (typeof releasePrompt === 'function') releasePrompt()
+    if (typeof releaseCitations === 'function') releaseCitations()
   }
 }
 
