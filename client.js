@@ -933,11 +933,11 @@ window.__ModuleLoader__.load({
       // style, so the layout properties here have to win outright.
       // Inverted against the page: dark chip on a light theme, light chip on a dark theme,
       // slightly larger and perfectly round.
-      '.dpc-cite{display:inline-flex !important;align-items:center;justify-content:center;box-sizing:border-box;width:auto !important;height:18px !important;min-width:18px;margin:0 3px !important;padding:0 3px !important;border:0 !important;border-radius:999px !important;background:var(--dsw-alias-label-primary,#111) !important;color:var(--dsw-alias-bg-base,#fff) !important;font-size:0 !important;line-height:1 !important;text-decoration:none !important;position:relative;top:-2px !important;vertical-align:baseline !important;overflow:hidden;flex:none;transition:opacity .12s ease}',
+      '.dpc-cite{display:inline-flex !important;align-items:center;justify-content:center;box-sizing:border-box;width:18px !important;height:18px !important;min-width:18px;margin:0 3px !important;padding:0 !important;border:0 !important;border-radius:999px !important;background:var(--dsw-alias-label-primary,#111) !important;color:var(--dsw-alias-bg-base,#fff) !important;font-size:0 !important;line-height:1 !important;text-decoration:none !important;position:relative;top:-2px !important;vertical-align:baseline !important;overflow:hidden;flex:none;transition:opacity .12s ease}',
       '.dpc-cite>svg{display:none !important}',
       '.dpc-cite::after{content:attr(data-dpc-cite);display:block;font-size:10px;font-weight:600;letter-spacing:0;line-height:1;text-align:center;white-space:nowrap}',
-      '.dpc-cite[data-dpc-wide="2"]::after{font-size:9px;letter-spacing:-.2px}',
-      '.dpc-cite[data-dpc-wide="3"]::after{font-size:8px;letter-spacing:-.3px}',
+      '.dpc-cite[data-dpc-wide="2"]::after{font-size:8.5px;letter-spacing:-.3px}',
+      '.dpc-cite[data-dpc-wide="3"]::after{font-size:7.5px;letter-spacing:-.4px}',
       '.dpc-cite[data-dpc-bare="true"]{background:var(--dsw-alias-label-tertiary,#8a8f98) !important;color:var(--dsw-alias-bg-base,#fff) !important;opacity:.72;cursor:default}',
       '@media (hover:hover){.dpc-cite:hover{opacity:.82}}',
       // A normalised source entry: ordinal, site icon, then the title as the link.

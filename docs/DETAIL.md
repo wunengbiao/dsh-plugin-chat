@@ -151,3 +151,5 @@ DSH 默认是一个编码工作台：新建会话要绑一个工作区目录，A
 
 **引用徽标改为反色圆形**：底色取 `--dsw-alias-label-primary`、文字取 `--dsw-alias-bg-base`——白色主题下就是**黑底白字**，暗色主题下自动变成**白底黑字**；尺寸从 16px 提到 **18px**，`border-radius:999px` 纯圆、无描边，两位/三位数字自动缩字号（9px/8px）。没有解析到来源的编号仍是浅灰底（弱化显示），hover 只轻微降低不透明度。
 
+**圆形是靠固定宽高保证的**：徽标改成 `width:18px !important; height:18px !important; padding:0`——之前用 `width:auto + min-width + padding`，一位数之外的字宽会把盒子撑宽、变成椭圆。两位数/三位数靠缩小字号（8.5px / 7.5px）留在圆内。实测所有徽标都是 18×18、`border-radius:999px`；暗色主题下自动是白底深色数字。
+

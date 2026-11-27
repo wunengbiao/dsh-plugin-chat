@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- Citation chips are a fixed 18x18 box with no padding, so they are perfect circles (the auto-width plus padding box had stretched them into ellipses for some digits).
 - Inline citation chips are inverted against the page (dark on light, light on dark), 18px and perfectly round.
 - The 来源 label no longer changes at all on hover, focus or while the drawer is open: every state is pinned to the tertiary label colour with no surface.
 - The 来源 label is text only (no border, fill or focus ring) and copies a real tab's computed box metrics at runtime, so its baseline matches the tabs exactly.
