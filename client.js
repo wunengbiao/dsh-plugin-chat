@@ -386,10 +386,10 @@ window.__ModuleLoader__.load({
      * @type {{ value: { present: boolean, toggleLeft?: number, toggleCenterY?: number }, listeners: Set<() => void> }}
      */
     const chrome = {
-      value: { placement: 'header', tabsInset: undefined, tabsCenterY: undefined },
+      value: { placement: 'header', tabsLeft: undefined, tabsCenterY: undefined },
       listeners: new Set(),
       /**
-       * @param {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number, tabsInset?: number, tabsCenterY?: number }} value - measured placement.
+       * @param {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number, tabsLeft?: number, tabsCenterY?: number }} value - measured placement.
        */
       publish (value) {
         const current = this.value
@@ -399,7 +399,7 @@ window.__ModuleLoader__.load({
           && current.centerY === value.centerY
           && current.left === value.left
           && current.top === value.top
-          && current.tabsInset === value.tabsInset
+          && current.tabsLeft === value.tabsLeft
           && current.tabsCenterY === value.tabsCenterY
         ) return
         this.value = value
@@ -427,17 +427,15 @@ window.__ModuleLoader__.load({
      * the trailing view buttons so the button sits beside the tabs.
      */
     function measureTabs () {
-      if (typeof document === 'undefined') return { inset: undefined, centerY: undefined }
-      const row = document.querySelector('[class*="tabs"]')
-      const rowRect = row === null ? undefined : row.getBoundingClientRect()
-      if (rowRect === undefined || rowRect.height === 0) return { inset: undefined, centerY: undefined }
-      const views = row.querySelector('[class*="views"]')
-      const viewsRect = views === null ? undefined : views.getBoundingClientRect()
-      // The trailing view buttons only take space when the right bar is shown; otherwise
-      // the button sits at the row's own right edge. A right inset is published because a
-      // fixed box anchored by `left` near the viewport edge gets clamped and wraps.
-      const right = viewsRect !== undefined && viewsRect.width > 40 ? viewsRect.left - 6 : rowRect.right - 6
-      return { inset: Math.max(6, window.innerWidth - right), centerY: rowRect.top + rowRect.height / 2 }
+      if (typeof document === 'undefined') return { left: undefined, centerY: undefined }
+      const tabs = document.querySelector('[class*="tabs"] [class*="viewTabs"]')
+      const anchor = tabs === null ? null : tabs
+      if (anchor === null) return { left: undefined, centerY: undefined }
+      const rect = anchor.getBoundingClientRect()
+      if (rect.height === 0) return { left: undefined, centerY: undefined }
+      // Sit right after the tab group (past the "…" overflow button), using the same
+      // rhythm as the host's own tab spacing.
+      return { left: rect.right + 14, centerY: rect.top + rect.height / 2 }
     }
 
     function refreshChrome () {
@@ -453,7 +451,7 @@ window.__ModuleLoader__.load({
       // lands it on the window's traffic lights.
       if (sidebarWidth < 200) {
         const railTabs = measureTabs()
-        chrome.publish({ placement: 'hidden', tabsInset: railTabs.inset, tabsCenterY: railTabs.centerY })
+        chrome.publish({ placement: 'hidden', tabsLeft: railTabs.left, tabsCenterY: railTabs.centerY })
         return
       }
       const tabs = measureTabs()
@@ -464,7 +462,7 @@ window.__ModuleLoader__.load({
           placement: 'section',
           right: sectionRect.right,
           centerY: sectionRect.top + sectionRect.height / 2,
-          tabsInset: tabs.inset,
+          tabsLeft: tabs.left,
           tabsCenterY: tabs.centerY,
         })
         return
@@ -475,7 +473,7 @@ window.__ModuleLoader__.load({
         placement: 'header',
         left: headerRect === undefined ? 0 : headerRect.left + 22,
         top: headerRect === undefined ? 12 : headerRect.top + 12,
-        tabsInset: tabs.inset,
+        tabsLeft: tabs.left,
         tabsCenterY: tabs.centerY,
       })
     }
@@ -1393,13 +1391,13 @@ window.__ModuleLoader__.load({
           if (sessionId === undefined) return
           refreshLedger(sessionId, true)
         }, [sessionId])
-        if (placement.tabsInset === undefined || placement.tabsCenterY === undefined) return null
+        if (placement.tabsLeft === undefined || placement.tabsCenterY === undefined) return null
         const count = sessionId !== undefined && ledgerCache.sessionId === sessionId ? ledgerCache.sources.length : 0
         return h('div', {
           className: 'dpc-src-launcher',
           style: {
             position: 'fixed',
-            right: placement.tabsInset,
+            left: placement.tabsLeft,
             top: placement.tabsCenterY,
             transform: 'translateY(-50%)',
             zIndex: 54,
