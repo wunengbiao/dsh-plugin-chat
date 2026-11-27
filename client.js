@@ -1690,10 +1690,33 @@ window.__ModuleLoader__.load({
      * all of them and the section is drawn on the last one — otherwise it lands in the
      * middle of the reply. A list the model wrote itself is hidden.
      */
+
+    /**
+     * Find a trailing list of links that the model wrote as its own source list.
+     *
+     * Answers that never use `[n]` markers often finish with "主要来源：[title](url)、…".
+     * That is a source list in disguise: it belongs in the drawer, not in the transcript.
+     * @param {Element} body - one assistant markdown body.
+     * @returns {HTMLAnchorElement[] | undefined} the links, when the block looks like a list.
+     */
+    function harvestLinks (body) {
+      const blocks = [...body.querySelectorAll('p, ul, ol')]
+      for (let index = blocks.length - 1; index >= 0 && index >= blocks.length - 4; index -= 1) {
+        const block = blocks[index]
+        const links = [...block.querySelectorAll('a[href]')]
+          .filter(anchor => /^https?:/i.test(anchor.getAttribute('href') ?? ''))
+        if (links.length < 2) continue
+        const total = (block.textContent ?? '').replace(/\s+/g, '').length
+        const linked = links.reduce((sum, anchor) => sum + (anchor.textContent ?? '').replace(/\s+/g, '').length, 0)
+        if (total === 0 || linked / total < 0.55) continue
+        return links
+      }
+      return undefined
+    }
+
     function applySourceSections () {
       if (typeof document === 'undefined') return
       const ledger = ledgerCache.sources
-      if (ledger.length === 0 && turnSources.size === 0) return
       const turns = new Map()
       for (const node of document.querySelectorAll('[data-chat-node-key]')) {
         const key = node.getAttribute('data-chat-node-key') ?? ''
@@ -1722,7 +1745,24 @@ window.__ModuleLoader__.load({
             if (Number.isFinite(value) && value > 0 && !numbers.includes(value)) numbers.push(value)
           }
         }
-        if (numbers.length === 0) continue
+        if (numbers.length === 0) {
+          // No numbers at all: the answer may still end with a plain link list, which the
+          // drawer can own instead of leaving raw links at the end of the reply.
+          const links = harvestLinks(steps[steps.length - 1].body)
+          if (links !== undefined) {
+            const block = links[0].closest('p, ul, ol')
+            if (block !== null && block.style.display !== 'none') block.style.display = 'none'
+            if (block !== null) block.setAttribute('data-dpc-harvested', 'true')
+            if (resolvedSources.size === 0) {
+              links.forEach((anchorElement, position) => {
+                const url = anchorElement.getAttribute('href') ?? ''
+                const title = (anchorElement.textContent ?? '').trim()
+                resolvedSources.set(position + 1, { index: position + 1, title: title === '' ? url : title, url })
+              })
+            }
+          }
+          continue
+        }
         // The ledger is the exact answer; when the model never registered numbers, the
         // turn's own search results stand in, in the order they were cited.
         const resolved = new Map()
