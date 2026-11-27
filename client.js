@@ -1323,10 +1323,15 @@ window.__ModuleLoader__.load({
     /** Open state of the sources drawer, shared by the button and the panel. */
     const sourcesPanel = {
       open: false,
+      forSession: undefined,
       listeners: new Set(),
-      /** @param {boolean} open - desired state. */
-      set (open) {
+      /**
+       * @param {boolean} open - desired state.
+       * @param {string | undefined} forSession - conversation the panel belongs to.
+       */
+      set (open, forSession) {
         this.open = open
+        this.forSession = forSession
         for (const listener of this.listeners) listener()
       },
       /**
@@ -1341,6 +1346,7 @@ window.__ModuleLoader__.load({
 
     /** Styles of the sources button and drawer. */
     const SOURCES_CSS = [
+      '.dpc-src-launcher,.dpc-src-btn,.dpc-src-backdrop,.dpc-src-drawer{-webkit-app-region:no-drag;pointer-events:auto}',
       '.dpc-src-btn{display:inline-flex !important;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.4));background:transparent;color:var(--dsw-alias-label-secondary,#9aa0a6);font-size:12px;line-height:22px;white-space:nowrap !important;cursor:pointer;transition:background .12s ease,color .12s ease}',
       '.dpc-src-btn-label{white-space:nowrap;line-height:22px}',
       '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,#fff)}}',
@@ -1380,7 +1386,9 @@ window.__ModuleLoader__.load({
         // The drawer only means something in chat mode.
         if (modeStore.mode() !== 'chat') return null
         if (placement.tabsInset === undefined || placement.tabsCenterY === undefined) return null
-        const count = ledgerCache.sources.length
+        const current = modeStore.probe
+        const sessionId = current === undefined ? undefined : current.sessionId
+        const count = sessionId !== undefined && ledgerCache.sessionId === sessionId ? ledgerCache.sources.length : 0
         return h('div', {
           className: 'dpc-src-launcher',
           style: {
@@ -1397,7 +1405,7 @@ window.__ModuleLoader__.load({
           className: 'dpc-src-btn',
           'data-open': sourcesPanel.open ? 'true' : 'false',
           title: '查看本次回答的引用来源',
-          onClick: () => sourcesPanel.set(!sourcesPanel.open),
+          onClick: () => sourcesPanel.set(!sourcesPanel.open, sessionId),
         },
         h('span', { className: 'dpc-src-btn-label' }, '来源'),
         count === 0 ? null : h('span', { className: 'dpc-src-btn-count' }, String(count))))
@@ -1412,7 +1420,9 @@ window.__ModuleLoader__.load({
       return function SourcesDrawer () {
         const [, bump] = React.useState(0)
         React.useEffect(() => sourcesPanel.subscribe(() => bump(count => count + 1)), [])
-        const open = sourcesPanel.open
+        const current = modeStore.probe
+        const sessionId = current === undefined ? undefined : current.sessionId
+        const open = sourcesPanel.open && sourcesPanel.forSession === sessionId
         React.useEffect(() => modeStore.subscribe(() => {
           if (modeStore.mode() !== 'chat' && sourcesPanel.open) sourcesPanel.set(false)
         }), [])
@@ -1420,10 +1430,9 @@ window.__ModuleLoader__.load({
           if (!open) return undefined
           const onKey = (event) => { if (event.key === 'Escape') sourcesPanel.set(false) }
           window.addEventListener('keydown', onKey)
-          const current = modeStore.probe
-          if (current !== undefined && current.sessionId !== undefined) refreshLedger(current.sessionId, true)
+          if (sessionId !== undefined) refreshLedger(sessionId, true)
           return () => window.removeEventListener('keydown', onKey)
-        }, [open])
+        }, [open, sessionId])
         if (!open) return null
         const sources = ledgerCache.sources
         return h('div', { className: 'dpc-src-layer' },
@@ -1519,8 +1528,14 @@ window.__ModuleLoader__.load({
      */
     function refreshLedger (sessionId, force) {
       const now = Date.now()
-      if (force !== true && ledgerCache.sessionId === sessionId && now - ledgerCache.at < 2000) return
-      ledgerCache.sessionId = sessionId
+      if (ledgerCache.sessionId !== sessionId) {
+        // Another conversation: never show its numbers here.
+        ledgerCache.sessionId = sessionId
+        ledgerCache.sources = []
+        ledgerCache.at = 0
+      }
+      if (force !== true && now - ledgerCache.at < 2000) return
+      ledgerCache.at = now
       ledgerCache.at = now
       void fetch(CITATIONS_ROUTE + '?session=' + encodeURIComponent(sessionId), { headers: { accept: 'application/json' } })
         .then(response => (response.ok ? response.json() : undefined))

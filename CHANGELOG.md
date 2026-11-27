@@ -11,6 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
+- The 来源 button and its drawer are exempt from the Electron drag region (clicks were swallowed) and the panel is scoped to the conversation it was opened for, so a new conversation no longer inherits the previous count.
 - The 来源 button now renders only in chat mode, stays a single-line pill (anchored by right inset and nowrap instead of being squeezed against the viewport edge), and its drawer sits above host chrome.
 - The source list moved out of the answer into a right-hand drawer opened from a "来源 N" button beside the conversation tabs, and inline citation chips now carry the real link (they were unclickable when the model wrote no list).
 - The source section is hidden until the answer actually finishes (turn/end plus settled text) and is then drawn once, sorted by number at the end of the reply.
