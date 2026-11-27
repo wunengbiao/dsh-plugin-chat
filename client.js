@@ -386,10 +386,10 @@ window.__ModuleLoader__.load({
      * @type {{ value: { present: boolean, toggleLeft?: number, toggleCenterY?: number }, listeners: Set<() => void> }}
      */
     const chrome = {
-      value: { placement: 'header' },
+      value: { placement: 'header', tabsRight: undefined, tabsCenterY: undefined },
       listeners: new Set(),
       /**
-       * @param {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number }} value - measured placement.
+       * @param {{ placement?: 'section' | 'header' | 'hidden', right?: number, centerY?: number, left?: number, top?: number, tabsRight?: number, tabsCenterY?: number }} value - measured placement.
        */
       publish (value) {
         const current = this.value
@@ -399,6 +399,8 @@ window.__ModuleLoader__.load({
           && current.centerY === value.centerY
           && current.left === value.left
           && current.top === value.top
+          && current.tabsRight === value.tabsRight
+          && current.tabsCenterY === value.tabsCenterY
         ) return
         this.value = value
         for (const listener of this.listeners) listener()
@@ -418,6 +420,25 @@ window.__ModuleLoader__.load({
      * and the sidebar's width (the conversation column's left edge), which tells
      * a collapsed rail apart from an expanded column.
      */
+
+    /**
+     * Where the conversation tab row ends, for the sources button.
+     * @returns {{ right: number | undefined, centerY: number | undefined }} anchored to
+     * the trailing view buttons so the button sits beside the tabs.
+     */
+    function measureTabs () {
+      if (typeof document === 'undefined') return { right: undefined, centerY: undefined }
+      const row = document.querySelector('[class*="tabs"]')
+      const rowRect = row === null ? undefined : row.getBoundingClientRect()
+      if (rowRect === undefined || rowRect.height === 0) return { right: undefined, centerY: undefined }
+      const views = row.querySelector('[class*="views"]')
+      const viewsRect = views === null ? undefined : views.getBoundingClientRect()
+      // The trailing view buttons only take space when the right bar is shown; otherwise
+      // the button sits at the row's own right edge.
+      const right = viewsRect !== undefined && viewsRect.width > 40 ? viewsRect.left - 8 : rowRect.right - 8
+      return { right, centerY: rowRect.top + rowRect.height / 2 }
+    }
+
     function refreshChrome () {
       if (typeof document === 'undefined') return
       const header = document.querySelector('header[data-window-drag]')
@@ -430,9 +451,11 @@ window.__ModuleLoader__.load({
       // row: mid-animation that row can still be wide, and drawing the switch then
       // lands it on the window's traffic lights.
       if (sidebarWidth < 200) {
-        chrome.publish({ placement: 'hidden' })
+        const railTabs = measureTabs()
+        chrome.publish({ placement: 'hidden', tabsRight: railTabs.right, tabsCenterY: railTabs.centerY })
         return
       }
+      const tabs = measureTabs()
       const section = document.querySelector('[data-sidebar-workspace-header]')
       const sectionRect = section === null ? undefined : section.getBoundingClientRect()
       if (sectionRect !== undefined && sectionRect.width > 0) {
@@ -440,6 +463,8 @@ window.__ModuleLoader__.load({
           placement: 'section',
           right: sectionRect.right,
           centerY: sectionRect.top + sectionRect.height / 2,
+          tabsRight: tabs.right,
+          tabsCenterY: tabs.centerY,
         })
         return
       }
@@ -449,6 +474,8 @@ window.__ModuleLoader__.load({
         placement: 'header',
         left: headerRect === undefined ? 0 : headerRect.left + 22,
         top: headerRect === undefined ? 12 : headerRect.top + 12,
+        tabsRight: tabs.right,
+        tabsCenterY: tabs.centerY,
       })
     }
 
@@ -1252,6 +1279,185 @@ window.__ModuleLoader__.load({
     /** Glyph shown when a site has no usable favicon: a link globe. */
     const GLOBE_GLYPH = ['M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8Z', 'M8 1.8c1.7 1.7 2.6 3.9 2.6 6.2S9.7 12.5 8 14.2C6.3 12.5 5.4 10.3 5.4 8S6.3 3.5 8 1.8Z', 'M1.9 8h12.2']
 
+
+
+    /**
+     * The globe glyph as a React element (the DOM version cannot be a child).
+     * @returns {object} React element.
+     */
+    function globeIcon () {
+      return h('svg', {
+        className: 'dpc-src-globe',
+        viewBox: '0 0 16 16',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.15,
+        strokeLinecap: 'round',
+        'aria-hidden': 'true',
+      }, GLOBE_GLYPH.map((d, index) => h('path', { key: index, d })))
+    }
+
+    /**
+     * One source's site icon, with the globe as the fallback.
+     * @param {{ url: string }} props - the source URL.
+     * @returns {object} React element.
+     */
+    function SourceFavicon (props) {
+      const [failed, setFailed] = React.useState(false)
+      let origin
+      try {
+        origin = new URL(props.url).origin
+      } catch {
+        origin = undefined
+      }
+      if (failed || origin === undefined) return globeIcon()
+      return h('img', {
+        className: 'dpc-src-fav',
+        src: origin + '/favicon.ico',
+        alt: '',
+        onError: () => setFailed(true),
+      })
+    }
+
+    /** Open state of the sources drawer, shared by the button and the panel. */
+    const sourcesPanel = {
+      open: false,
+      listeners: new Set(),
+      /** @param {boolean} open - desired state. */
+      set (open) {
+        this.open = open
+        for (const listener of this.listeners) listener()
+      },
+      /**
+       * @param {() => void} listener - re-render callback.
+       * @returns {() => void} unsubscribe.
+       */
+      subscribe (listener) {
+        this.listeners.add(listener)
+        return () => { this.listeners.delete(listener) }
+      },
+    }
+
+    /** Styles of the sources button and drawer. */
+    const SOURCES_CSS = [
+      '.dpc-src-btn{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.4));background:transparent;color:var(--dsw-alias-label-secondary,#9aa0a6);font-size:12px;line-height:1;cursor:pointer;transition:background .12s ease,color .12s ease}',
+      '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,#fff)}}',
+      '.dpc-src-btn[data-open="true"]{background:var(--dsw-alias-bg-layer-2,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,#fff)}',
+      '.dpc-src-btn-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--dsw-alias-label-link,#7aa7e0);color:#fff;font-size:10px;font-weight:600}',
+      '.dpc-src-backdrop{position:fixed;inset:0;z-index:74;background:rgba(8,10,14,.32)}',
+      '.dpc-src-drawer{position:fixed;top:0;right:0;bottom:0;z-index:75;display:flex;flex-direction:column;width:360px;max-width:86vw;background:var(--dsw-alias-bg-overlay,#1b1b1c);border-left:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.35));box-shadow:-18px 0 48px rgba(0,0,0,.28)}',
+      '.dpc-src-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.28))}',
+      '.dpc-src-head-title{font-size:14px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary,inherit)}',
+      '.dpc-src-head-count{font-size:12px;color:var(--dsw-alias-label-tertiary,#8a8f98)}',
+      '.dpc-src-close{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--dsw-alias-label-tertiary,#8a8f98);cursor:pointer}',
+      '@media (hover:hover){.dpc-src-close:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.2));color:var(--dsw-alias-label-primary,inherit)}}',
+      '.dpc-src-body{flex:1;overflow:auto;padding:8px 10px 18px}',
+      '.dpc-src-item{display:flex;gap:10px;padding:9px 8px;border-radius:10px;text-decoration:none;color:inherit}',
+      '@media (hover:hover){.dpc-src-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.16))}}',
+      '.dpc-src-item-index{flex:none;min-width:18px;font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary,#8a8f98);font-variant-numeric:tabular-nums;text-align:right}',
+      '.dpc-src-item-body{min-width:0;display:flex;flex-direction:column;gap:3px}',
+      '.dpc-src-item-head{display:flex;align-items:center;gap:6px;min-width:0}',
+      '.dpc-src-item-title{font-size:13px;line-height:19px;color:var(--dsw-alias-label-primary,inherit);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+      '.dpc-src-item-host{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary,#8a8f98);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.dpc-src-empty{padding:18px 10px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8a8f98)}',
+      '.dpc-src-fav{width:14px;height:14px;border-radius:3px;object-fit:contain;flex:none}',
+      '.dpc-src-globe{width:14px;height:14px;flex:none;color:var(--dsw-alias-label-link,#7aa7e0)}',
+    ].join('\n')
+
+    /**
+     * The "来源" button beside the conversation tabs.
+     * @param {object} ctx - client plugin context.
+     * @returns {Function} React component.
+     */
+    function createSourcesLauncher (ctx) {
+      return function SourcesLauncher () {
+        const placement = useChrome()
+        const [, bump] = React.useState(0)
+        React.useEffect(() => sourcesPanel.subscribe(() => bump(count => count + 1)), [])
+        if (placement.tabsRight === undefined || placement.tabsCenterY === undefined) return null
+        const count = ledgerCache.sources.length
+        return h('div', {
+          className: 'dpc-src-launcher',
+          style: {
+            position: 'fixed',
+            left: placement.tabsRight,
+            top: placement.tabsCenterY,
+            transform: 'translate(-100%, -50%)',
+            zIndex: 54,
+          },
+        },
+        h('style', null, SOURCES_CSS),
+        h('button', {
+          type: 'button',
+          className: 'dpc-src-btn',
+          'data-open': sourcesPanel.open ? 'true' : 'false',
+          title: '查看本文引用来源',
+          onClick: () => sourcesPanel.set(!sourcesPanel.open),
+        },
+        h('span', null, '来源'),
+        count === 0 ? null : h('span', { className: 'dpc-src-btn-count' }, String(count))))
+      }
+    }
+
+    /**
+     * The right-hand sources drawer.
+     * @returns {Function} React component.
+     */
+    function createSourcesDrawer () {
+      return function SourcesDrawer () {
+        const [, bump] = React.useState(0)
+        React.useEffect(() => sourcesPanel.subscribe(() => bump(count => count + 1)), [])
+        const open = sourcesPanel.open
+        React.useEffect(() => {
+          if (!open) return undefined
+          const onKey = (event) => { if (event.key === 'Escape') sourcesPanel.set(false) }
+          window.addEventListener('keydown', onKey)
+          const current = modeStore.probe
+          if (current !== undefined && current.sessionId !== undefined) refreshLedger(current.sessionId, true)
+          return () => window.removeEventListener('keydown', onKey)
+        }, [open])
+        if (!open) return null
+        const sources = ledgerCache.sources
+        return h('div', { className: 'dpc-src-layer' },
+          h('style', null, SOURCES_CSS),
+          h('div', { className: 'dpc-src-backdrop', onClick: () => sourcesPanel.set(false) }),
+          h('aside', { className: 'dpc-src-drawer', role: 'dialog', 'aria-label': '引用来源' },
+            h('div', { className: 'dpc-src-head' },
+              h('span', { className: 'dpc-src-head-title' }, '来源'),
+              h('span', { className: 'dpc-src-head-count' }, sources.length + ' 条'),
+              h('button', { type: 'button', className: 'dpc-src-close', title: '关闭', onClick: () => sourcesPanel.set(false) }, '✕')),
+            h('div', { className: 'dpc-src-body' },
+              sources.length === 0
+                ? h('div', { className: 'dpc-src-empty' }, '这次回答还没有登记引用来源。')
+                : sources.map(item => h('a', {
+                  key: item.index + ':' + item.url,
+                  className: 'dpc-src-item',
+                  href: item.url,
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                },
+                h('span', { className: 'dpc-src-item-index' }, String(item.index) + '.'),
+                h('span', { className: 'dpc-src-item-body' },
+                  h('span', { className: 'dpc-src-item-head' },
+                    h(SourceFavicon, { url: item.url }),
+                    h('span', { className: 'dpc-src-item-title' }, item.title === '' ? item.url : item.title)),
+                  h('span', { className: 'dpc-src-item-host' }, hostOf(item.url))))))))
+      }
+    }
+
+    /**
+     * The host name of one URL, or the URL when it cannot be parsed.
+     * @param {string} url - source URL.
+     * @returns {string} display host.
+     */
+    function hostOf (url) {
+      try {
+        return new URL(url).hostname.replace(/^www\./, '')
+      } catch {
+        return url
+      }
+    }
+
     /**
      * The site icon for one source, with a globe when the site has no favicon.
      * @param {string} href - the source URL.
@@ -1303,9 +1509,9 @@ window.__ModuleLoader__.load({
      * Refresh the ledger for one conversation, at most every two seconds.
      * @param {string} sessionId - the displayed conversation.
      */
-    function refreshLedger (sessionId) {
+    function refreshLedger (sessionId, force) {
       const now = Date.now()
-      if (ledgerCache.sessionId === sessionId && now - ledgerCache.at < 2000) return
+      if (force !== true && ledgerCache.sessionId === sessionId && now - ledgerCache.at < 2000) return
       ledgerCache.sessionId = sessionId
       ledgerCache.at = now
       void fetch(CITATIONS_ROUTE + '?session=' + encodeURIComponent(sessionId), { headers: { accept: 'application/json' } })
@@ -1328,8 +1534,8 @@ window.__ModuleLoader__.load({
      */
     function applySourceSections () {
       if (typeof document === 'undefined') return
-      const sources = ledgerCache.sources
-      if (sources.length === 0 && turnSources.size === 0) return
+      const ledger = ledgerCache.sources
+      if (ledger.length === 0 && turnSources.size === 0) return
       const turns = new Map()
       for (const node of document.querySelectorAll('[data-chat-node-key]')) {
         const key = node.getAttribute('data-chat-node-key') ?? ''
@@ -1346,39 +1552,10 @@ window.__ModuleLoader__.load({
       // aligned with the turns from the newest one backwards.
       const base = startedTurns.length - groups.length
       for (let position = 0; position < groups.length; position += 1) {
-        const [key, steps] = groups[position]
+        const steps = groups[position][1]
         steps.sort((left, right) => left.step - right.step)
         const turn = base >= 0 ? startedTurns[base + position] : undefined
-        // A section is only drawn once the answer stopped growing: while it streams the
-        // block would sit mid-reply and keep moving. Two consecutive passes with the same
-        // length mean the text settled.
-        // `textContent` is layout-independent; `innerText` fluctuates while the browser
-        // re-lays out, which kept resetting the settled check.
-        const length = steps.reduce((total, item) => {
-          const text = item.body.textContent || ''
-          const own = item.body.querySelector('.dpc-sources')
-          return total + (own === null ? text.length : text.length - (own.textContent || '').length)
-        }, 0)
-        const now = Date.now()
-        const seen = answerLengths.get(key)
-        const dropSection = () => {
-          for (const { body } of steps) {
-            for (const stale of body.querySelectorAll('.dpc-sources')) stale.remove()
-          }
-        }
-        if (seen === undefined || seen.length !== length) {
-          // Still growing: remember when it last changed and show nothing yet.
-          answerLengths.set(key, { length, since: now })
-          dropSection()
-          continue
-        }
-        const finished = turn === undefined || finishedTurns.has(turn)
-        // A finished turn draws as soon as the text settles; an interrupted one waits a
-        // little longer, so a chatty stream cannot make the block jump around.
-        if (!finished && now - seen.since < 5000) {
-          dropSection()
-          continue
-        }
+        const searched = turnSources.get(turn) ?? []
         const numbers = []
         for (const { body } of steps) {
           for (const chip of body.querySelectorAll('.dpc-cite')) {
@@ -1389,39 +1566,35 @@ window.__ModuleLoader__.load({
         if (numbers.length === 0) continue
         // The ledger is the exact answer; when the model never registered numbers, the
         // turn's own search results stand in, in the order they were cited.
-        const searched = turnSources.get(turn) ?? []
-        const used = []
-        for (let position = 0; position < numbers.length; position += 1) {
-          const number = numbers[position]
-          const found = sources.find(item => item !== undefined && item.index === number)
+        const resolved = new Map()
+        for (let index = 0; index < numbers.length; index += 1) {
+          const number = numbers[index]
+          const found = ledger.find(item => item !== undefined && item.index === number)
           if (found !== undefined) {
-            used.push(found)
+            resolved.set(number, found)
             continue
           }
-          const fallback = searched[position]
-          if (fallback !== undefined) used.push({ index: number, title: fallback.title ?? fallback.url, url: fallback.url })
+          const fallback = searched[index]
+          if (fallback !== undefined) resolved.set(number, { index: number, title: fallback.title ?? fallback.url, url: fallback.url })
         }
-        if (used.length === 0) continue
-        for (const { body } of steps) hideSourceSection(body)
-        const target = steps[steps.length - 1].body
-        const signature = used.map(item => item.index + ':' + item.url).join('|')
+        // Chips carry the link themselves, so a citation opens the source.
         for (const { body } of steps) {
-          for (const stale of body.querySelectorAll('.dpc-sources')) {
-            if (body !== target || stale.dataset.signature !== signature) stale.remove()
+          for (const chip of body.querySelectorAll('.dpc-cite')) {
+            const value = Number(chip.dataset === undefined ? Number.NaN : chip.dataset.dpcCite)
+            const target = resolved.get(value)
+            if (target === undefined) continue
+            if (chip.getAttribute('href') === target.url) continue
+            chip.setAttribute('href', target.url)
+            chip.setAttribute('target', '_blank')
+            chip.setAttribute('rel', 'noopener noreferrer')
+            chip.dataset.dpcUrl = target.url
+            if (typeof target.title === 'string' && target.title !== '') chip.dataset.dpcTitle = target.title
+            chip.removeAttribute('data-dpc-bare')
           }
+          // The list itself now lives in the side panel, not at the end of the answer.
+          for (const stale of body.querySelectorAll('.dpc-sources')) stale.remove()
+          hideSourceSection(body)
         }
-        used.sort((left, right) => left.index - right.index)
-        const current = target.querySelector('.dpc-sources')
-        if (current !== null && current.dataset.signature === signature) {
-          // A streaming answer keeps appending after the section was drawn; keep it last
-          // so it never ends up in the middle of the reply.
-          if (target.lastElementChild !== current) target.appendChild(current)
-          continue
-        }
-        if (current !== null) current.remove()
-        const section = renderSourceSection(used)
-        section.dataset.signature = signature
-        target.appendChild(section)
       }
     }
 
@@ -1987,12 +2160,24 @@ window.__ModuleLoader__.load({
         // own chrome strip beside the collapse control. All three occupants share
         // ONE injection: a second `ctx.slots.inject` on the same slot key replaces
         // the first, which silently dropped the switch (and the card) before.
+        const SourcesLauncher = createSourcesLauncher(ctx)
+        const SourcesDrawer = createSourcesDrawer()
         ctx.slots.inject('shell.overlay', function* () {
           yield ctx.slots.register({
             name: 'shell.overlay',
             id: 'dsh-plugin-chat-switch',
             order: 5,
           }, Overlay)
+          yield ctx.slots.register({
+            name: 'shell.overlay',
+            id: 'dsh-plugin-chat-sources',
+            order: 8,
+          }, SourcesLauncher)
+          yield ctx.slots.register({
+            name: 'shell.overlay',
+            id: 'dsh-plugin-chat-sources-drawer',
+            order: 9,
+          }, SourcesDrawer)
           yield ctx.slots.register({
             name: 'shell.overlay',
             id: 'dsh-plugin-chat-sidebar-filter',
