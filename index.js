@@ -700,6 +700,32 @@ function send (response, status, payload, headers = {}) {
   response.end(JSON.stringify(payload))
 }
 
+
+/**
+ * Serve one conversation's citation ledger.
+ * @param {import('node:http').IncomingMessage} request - incoming request.
+ * @param {import('node:http').ServerResponse} response - outgoing response.
+ */
+function handleCitations (request, response) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    send(response, 405, { ok: false, reason: 'method' }, { allow: 'GET, HEAD' })
+    return
+  }
+  let sessionId = ''
+  try {
+    sessionId = new URL(request.url ?? '/', 'http://localhost').searchParams.get('session') ?? ''
+  } catch {
+    sessionId = ''
+  }
+  const entry = sessionId === '' ? undefined : state.ledger.sessions[sessionId]
+  const sources = entry === undefined || !Array.isArray(entry.sources) ? [] : entry.sources
+  send(response, 200, {
+    ok: true,
+    next: entry === undefined || typeof entry.next !== 'number' ? 1 : entry.next,
+    sources: sources.slice(-200),
+  })
+}
+
 /**
  * Install both routes once per process.
  * @param {import('@deepseek-ai/cordis').Context} ctx - plugin context.
