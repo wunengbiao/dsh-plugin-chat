@@ -147,3 +147,5 @@ DSH 默认是一个编码工作台：新建会话要绑一个工作区目录，A
 
 **hover 也只是变色**：宿主会给标签行里的 `<button>` 加悬停底色，所以对 `:hover/:active/:focus/:focus-visible/[data-open]` 都显式 `background: transparent !important; border: 0; box-shadow: none; outline: none`，只保留文字颜色从 tertiary → primary 的变化。实测 hover 时背景仍为 `rgba(0,0,0,0)`、边框 0、无焦点圈。
 
+**完全不随交互变色**：`来源` 文字在任何状态（hover / active / focus / 抽屉打开）都锁定为 `--dsw-alias-label-tertiary`，同时清掉底色、边框、阴影、焦点圈——因为宿主对标签行里的 `<button>` 会加 hover 底色与文字色，必须显式压回去。
+

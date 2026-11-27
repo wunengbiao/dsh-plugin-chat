@@ -11,7 +11,7 @@ First release.
 - A mode-scoped sidebar: chat mode lists only conversations (no workspace rows, flush-left rows, section header renamed to 对话 with a new-chat button), code mode hides the chat Workspace and its Sessions.
 - A Settings section that edits the chat system prompt (`$DSH_HOME/dsh-plugin-chat.json`, applied from the next message without a restart).
 - The chat-mode row label («对话») now keeps the host label's own box and line metrics, so it lines up with the row buttons exactly like «工作区» does in code mode.
-- The host styles bare buttons in the tab row, so the 来源 label now cancels hover/active/focus surfaces explicitly and only shifts its text colour.
+- The 来源 label no longer changes at all on hover, focus or while the drawer is open: every state is pinned to the tertiary label colour with no surface.
 - The 来源 label is text only (no border, fill or focus ring) and copies a real tab's computed box metrics at runtime, so its baseline matches the tabs exactly.
 - The 来源 button now lives inside the host tab row (inserted before its trailing view buttons), so its spacing and baseline come from the host layout instead of hand-computed overlay offsets; its stylesheet is injected once into head so it keeps the tab-like look while the drawer is closed.
 - The 来源 button sits right after the tab group (after 统计 and the overflow "…") instead of at the row's far right.

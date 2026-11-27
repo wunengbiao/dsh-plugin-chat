@@ -1352,14 +1352,10 @@ window.__ModuleLoader__.load({
       '.dpc-src-btn{display:inline-flex !important;align-items:center;gap:6px;height:35px;padding:10px 6px 9px;border:0 !important;outline:none !important;background:transparent !important;box-shadow:none !important;color:var(--dsw-alias-label-tertiary,#adb2b8);font-size:13px;font-weight:500;line-height:16px;white-space:nowrap !important;cursor:pointer;transition:color .12s ease}',
       '.dpc-src-btn-label{white-space:nowrap;line-height:16px}',
       '.dpc-src-btn:focus,.dpc-src-btn:focus-visible{outline:none !important;box-shadow:none !important}',
-      '@media (hover:hover){.dpc-src-btn:hover{color:var(--dsw-alias-label-primary,#f9fafb)}}',
-      '.dpc-src-btn[data-open="true"]{color:var(--dsw-alias-label-primary,#f9fafb)}',
-      // The host styles bare buttons inside the tab row, so the hover/active surface has to
-      // be cancelled explicitly — the label is meant to be text only.
-      '.dpc-src-btn:hover,.dpc-src-btn:active,.dpc-src-btn:focus,.dpc-src-btn:focus-visible,.dpc-src-btn[data-open="true"]{background:transparent !important;border:0 !important;box-shadow:none !important;outline:none !important}',
+      // The label never changes: the host styles bare buttons in the tab row, so every
+      // interactive state is pinned back to plain text in one colour.
+      '.dpc-src-btn:hover,.dpc-src-btn:active,.dpc-src-btn:focus,.dpc-src-btn:focus-visible,.dpc-src-btn[data-open="true"]{background:transparent !important;border:0 !important;box-shadow:none !important;outline:none !important;color:var(--dsw-alias-label-tertiary,#adb2b8) !important}',
       '.dpc-src-btn-count{font-size:12px;font-weight:400;color:var(--dsw-alias-label-caption,#7f858c);font-variant-numeric:tabular-nums;line-height:16px}',
-      '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}}',
-      '.dpc-src-btn[data-open="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}',
       '.dpc-src-backdrop{position:fixed;inset:0;z-index:200;background:rgba(8,10,14,.32)}',
       '.dpc-src-drawer{position:fixed;top:0;right:0;bottom:0;z-index:201;display:flex;flex-direction:column;width:360px;max-width:86vw;background:var(--dsw-alias-bg-overlay,#1b1b1c);border-left:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.35));box-shadow:-18px 0 48px rgba(0,0,0,.28)}',
       '.dpc-src-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:.5px solid var(--dsw-alias-border-l3,rgba(127,131,140,.28))}',
