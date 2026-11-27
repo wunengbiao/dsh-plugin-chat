@@ -1354,6 +1354,9 @@ window.__ModuleLoader__.load({
       '.dpc-src-btn:focus,.dpc-src-btn:focus-visible{outline:none !important;box-shadow:none !important}',
       '@media (hover:hover){.dpc-src-btn:hover{color:var(--dsw-alias-label-primary,#f9fafb)}}',
       '.dpc-src-btn[data-open="true"]{color:var(--dsw-alias-label-primary,#f9fafb)}',
+      // The host styles bare buttons inside the tab row, so the hover/active surface has to
+      // be cancelled explicitly — the label is meant to be text only.
+      '.dpc-src-btn:hover,.dpc-src-btn:active,.dpc-src-btn:focus,.dpc-src-btn:focus-visible,.dpc-src-btn[data-open="true"]{background:transparent !important;border:0 !important;box-shadow:none !important;outline:none !important}',
       '.dpc-src-btn-count{font-size:12px;font-weight:400;color:var(--dsw-alias-label-caption,#7f858c);font-variant-numeric:tabular-nums;line-height:16px}',
       '@media (hover:hover){.dpc-src-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}}',
       '.dpc-src-btn[data-open="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(127,131,140,.18));color:var(--dsw-alias-label-primary,#f9fafb)}',

@@ -145,3 +145,5 @@ DSH 默认是一个编码工作台：新建会话要绑一个工作区目录，A
 
 **纯文字 + 像素级对齐**：按钮不再有边框/底色/焦点圈（`border:0`、`background:transparent`、`:focus{outline:none}`，hover 只变色），点击后也不会出现默认焦点框。对齐不再靠手写数值，而是**读一个真实页签的 computed style**（height / padding / margin / line-height / font-size / font-weight / align-self / box-sizing）原样套到按钮上——这样宿主怎么改排版都跟着走。实测按钮文字与「统计」文字的垂直中心都是 58.3px，误差 0。
 
+**hover 也只是变色**：宿主会给标签行里的 `<button>` 加悬停底色，所以对 `:hover/:active/:focus/:focus-visible/[data-open]` 都显式 `background: transparent !important; border: 0; box-shadow: none; outline: none`，只保留文字颜色从 tertiary → primary 的变化。实测 hover 时背景仍为 `rgba(0,0,0,0)`、边框 0、无焦点圈。
+
