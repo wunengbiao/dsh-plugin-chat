@@ -76,6 +76,9 @@ window.__ModuleLoader__.load({
      * Index every web result carried by the session's tool events.
      * @param {{ entries?: readonly { event?: { type?: string, data?: { meta?: { sources?: readonly { url?: string, title?: string, snippet?: string }[] } } } }[] }} window - session event window.
      */
+    /** Sources each turn searched, in result order: the fallback numbering source. */
+    const turnSources = new Map()
+
     function indexSources (window) {
       const entries = window?.entries ?? []
       let changed = false
@@ -84,7 +87,20 @@ window.__ModuleLoader__.load({
         if (event?.type !== 'tool/result') continue
         const sources = event.data?.meta?.sources
         if (!Array.isArray(sources)) continue
+        const turn = Number(event.data?.turn)
+        let list
+        if (Number.isFinite(turn)) {
+          list = turnSources.get(turn)
+          if (list === undefined) {
+            list = []
+            turnSources.set(turn, list)
+          }
+        }
         for (const source of sources) {
+          const titled = typeof source?.title === 'string' ? source.title : undefined
+          if (list !== undefined && typeof source?.url === 'string' && !list.some(item => item.url === source.url)) {
+            list.push({ url: source.url, title: titled })
+          }
           const url = typeof source?.url === 'string' ? source.url : undefined
           if (url === undefined || sourceIndex.has(url)) continue
           sourceIndex.set(url, {
@@ -1293,7 +1309,7 @@ window.__ModuleLoader__.load({
     function applySourceSections () {
       if (typeof document === 'undefined') return
       const sources = ledgerCache.sources
-      if (sources.length === 0) return
+      if (sources.length === 0 && turnSources.size === 0) return
       const turns = new Map()
       for (const node of document.querySelectorAll('[data-chat-node-key]')) {
         const key = node.getAttribute('data-chat-node-key') ?? ''
@@ -1305,7 +1321,7 @@ window.__ModuleLoader__.load({
         if (steps === undefined) turns.set(match[1], [{ step: Number(match[2]), body }])
         else steps.push({ step: Number(match[2]), body })
       }
-      for (const steps of turns.values()) {
+      for (const [turn, steps] of turns) {
         steps.sort((left, right) => left.step - right.step)
         const numbers = []
         for (const { body } of steps) {
@@ -1315,10 +1331,19 @@ window.__ModuleLoader__.load({
           }
         }
         if (numbers.length === 0) continue
+        // The ledger is the exact answer; when the model never registered numbers, the
+        // turn's own search results stand in, in the order they were cited.
+        const searched = turnSources.get(turn) ?? []
         const used = []
-        for (const number of numbers) {
+        for (let position = 0; position < numbers.length; position += 1) {
+          const number = numbers[position]
           const found = sources.find(item => item !== undefined && item.index === number)
-          if (found !== undefined) used.push(found)
+          if (found !== undefined) {
+            used.push(found)
+            continue
+          }
+          const fallback = searched[position]
+          if (fallback !== undefined) used.push({ index: number, title: fallback.title ?? fallback.url, url: fallback.url })
         }
         if (used.length === 0) continue
         for (const { body } of steps) hideSourceSection(body)
